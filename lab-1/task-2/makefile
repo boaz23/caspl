@@ -7,15 +7,15 @@ ASMFLAGS = -g -w+all -f -elf32
 LINKFLAGS = -g -Wall -m32
 
 PRGMNAME = encoder
-OBJECTS = main.o
+OBJECTS = encoder.o
 
 compile: encoder
 
 encoder: $(OBJECTS)
 	$(CC) $(LINKFLAGS) -o $(PRGMNAME) $(OBJECTS)
 
-main.o: main.c
-	$(CC) $(CFLAGS) -o main.o main.c
+encoder.o: encoder.c
+	$(CC) $(CFLAGS) -o encoder.o encoder.c
 
 .PHONY: clean
 clean:
