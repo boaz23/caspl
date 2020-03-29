@@ -1,5 +1,14 @@
+#extensionless files
+*
+!/**/
+!*.*
+
 # out files
 *.o
 
+# compressed files
+*.zip
+*.tar.gz
+
 #specific files
-encoder
+out.txt
