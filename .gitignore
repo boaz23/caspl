@@ -3,8 +3,10 @@
 !/**/
 !*.*
 
-# out files
+# compilation and debug related files
 *.o
+*.lst
+*.bin
 
 # compressed files
 *.zip
