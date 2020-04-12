@@ -2,6 +2,7 @@
 *
 !/**/
 !*.*
+!makefile
 
 # compilation and debug related files
 *.o
