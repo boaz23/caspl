@@ -28,6 +28,11 @@ void PrintHex(FILE *file, char *buffer, int length) {
     }
 }
 
+void virus_destruct(virus *v) {
+    free(v->sig);
+    free(v);
+}
+
 virus* readVirus(FILE *file) {
     virus *v = (virus*)malloc(sizeof(virus));
     if (v == NULL) {
@@ -70,16 +75,41 @@ void printVirus(virus *virus, FILE *output) {
 }
 
 /* Print the data of every link in list to the given stream. Each item followed by a newline character. */
-void list_print(link *virus_list, FILE*); 
+void list_print(link *virus_list, FILE* file) {
+    while (virus_list != NULL) {
+        printVirus(virus_list->vir, file);
+        fprintf(file, "\n");
+        virus_list = virus_list->nextVirus;
+    }
+}
  
 /* Add a new link with the given data to the list 
    (either at the end or the beginning, depending on what your TA tells you),
    and return a pointer to the list (i.e., the first link in the list).
    If the list is null - create a new entry and return a pointer to the entry. */
-link* list_append(link* virus_list, virus* data); 
+link* list_append(link* virus_list, virus* data) {
+    link **head = &virus_list;
+    link **prev = &virus_list;
+    link *new = NULL;
+    while (*prev != NULL) {
+        prev = &((*prev)->nextVirus);
+    }
+    new = (link*)malloc(sizeof(link));
+    new->vir = data;
+    new->nextVirus = NULL;
+    *prev = new;
+    return *head;
+}
  
 /* Free the memory allocated by the list. */
-void list_free(link *virus_list);
+void list_free(link *virus_list) {
+    while (virus_list != NULL) {
+        link *next = virus_list->nextVirus;
+        virus_destruct(virus_list->vir);
+        free(virus_list);
+        virus_list = next;
+    }
+}
 
 int main(int argc, char **argv) {
     menu_action_desc menu[] = {
