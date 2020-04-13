@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 typedef unsigned char byte;
 #define ARR_LEN(a) (sizeof((a))/sizeof(*(a)))
@@ -19,7 +20,7 @@ struct link {
 
 typedef struct menu_action_desc {
    char *name;
-   void (*f)(); 
+   link* (*f)(link*); 
 } menu_action_desc;
 
 void PrintHex(FILE *file, char *buffer, int length) {
@@ -64,8 +65,8 @@ void printVirus(virus *virus, FILE *output) {
     int i = 0;
     fprintf(output, "Virus name: %s\n", virus->virusName);
     fprintf(output, "Virus size: %d\n", virus->SigSize);
+
     fprintf(output, "signature:\n");
-    
     for (i = 0; i + 20 < virus->SigSize; i += 20) {
         PrintHex(output, (char*)(virus->sig + i), 20);
         fprintf(output, "\n");
@@ -111,17 +112,68 @@ void list_free(link *virus_list) {
     }
 }
 
+link* read_virus_list(FILE *file) {
+    link* virus_list = NULL;
+    while (!feof(file)) {
+        virus *v = readVirus(file);
+        if (v == NULL) {
+            break;
+        }
+
+        virus_list = list_append(virus_list, v);
+    }
+
+    return virus_list;
+}
+
+link* load_signatures_action(link* virus_list) {
+    char file_name[256];
+    printf("Enter file name: ");
+    if (fgets(file_name, ARR_LEN(file_name), stdin) == NULL) {
+        printf("bad input\n\n");
+        return virus_list;
+    }
+
+    int last_char_index = strlen(file_name) - 1;
+    if (file_name[last_char_index] = '\n') {
+        file_name[last_char_index] = '\0';
+    }
+    
+    FILE *file = fopen(file_name, "r");
+    if (file == NULL) {
+        printf("could not open '%s' for reading", file_name);
+        return virus_list;
+    }
+
+    list_free(virus_list);
+    virus_list = read_virus_list(file);
+    fclose(file);
+    return virus_list;
+}
+
+link* print_signatures_action(link* virus_list) {
+    if (virus_list != NULL) {
+        list_print(virus_list, stdout);
+    }
+    return virus_list;
+}
+
+link* print_signatures_action(link *virus_list) {
+    exit(0);
+    return virus_list;
+}
+
 int main(int argc, char **argv) {
     menu_action_desc menu[] = {
-        { "Load signatures", NULL },
-        { "Print signatures", NULL },
-        { "Quit", NULL },
+        { "Load signatures", load_signatures_action },
+        { "Print signatures", print_signatures_action },
+        { "Quit", print_signatures_action },
         { NULL, NULL }
     };
     
     while (1) {
         const menu_action_desc *menu_item = menu;
-        int i = 0;
+        int i = 1;
         char option_buffer[256];
         int option = 0;
 
@@ -143,9 +195,8 @@ int main(int argc, char **argv) {
             continue;
         }
 
-        --option;
-        if (0 <= option && option < ARR_LEN(menu)) {
-            menu[option].f();
+        if (1 <= option && option <= ARR_LEN(menu)) {
+            menu[option - 1].f();
         }
         else {
             printf("invalid action chosen\n\n");
