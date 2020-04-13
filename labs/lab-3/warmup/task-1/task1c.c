@@ -10,6 +10,13 @@ typedef struct virus {
     unsigned char* sig;
 } virus;
 
+typedef struct link link;
+ 
+struct link {
+    link *nextVirus;
+    virus *vir;
+};
+
 void PrintHex(FILE *file, char *buffer, int length) {
     for (int i = 0; i < length; ++i) {
         fprintf(file, "%02hhX ", (unsigned char)buffer[i]);
@@ -27,6 +34,7 @@ virus* readVirus(FILE *file) {
 
     v->sig = (unsigned char*)malloc(v->SigSize);
     if (v->sig == NULL) {
+        free(v);
         return NULL;
     }
 
@@ -52,6 +60,18 @@ void printVirus(virus *virus, FILE *output) {
     PrintHex(output, (char*)(virus->sig + i), virus->SigSize - i);
     fprintf(output, "\n");
 }
+
+/* Print the data of every link in list to the given stream. Each item followed by a newline character. */
+void list_print(link *virus_list, FILE*); 
+ 
+/* Add a new link with the given data to the list 
+   (either at the end or the beginning, depending on what your TA tells you),
+   and return a pointer to the list (i.e., the first link in the list).
+   If the list is null - create a new entry and return a pointer to the entry. */
+link* list_append(link* virus_list, virus* data); 
+ 
+/* Free the memory allocated by the list. */
+void list_free(link *virus_list);
 
 int main(int argc, char **argv) {
     FILE *f = fopen(argv[1], "r");
