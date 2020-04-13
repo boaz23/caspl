@@ -126,15 +126,6 @@ link* read_virus_list(FILE *file) {
     return virus_list;
 }
 
-link* load_virus_list(link* virus_list, FILE *file) {
-    link* new_virus_list = read_virus_list(file);
-    if (new_virus_list != NULL) {
-        list_free(virus_list);
-        virus_list = new_virus_list;
-    }
-    return virus_list;
-}
-
 link* load_signatures_action(link* virus_list) {
     char file_name[256];
     printf("Enter file name: ");
@@ -154,7 +145,7 @@ link* load_signatures_action(link* virus_list) {
         return virus_list;
     }
 
-    virus_list = load_virus_list(virus_list, file);
+    virus_list = read_virus_list(file);
     fclose(file);
     return virus_list;
 }
@@ -195,6 +186,16 @@ int read_option(int *option) {
     return 1;
 }
 
+link* invoke_menu_action(link *virus_list, link* (*f)(link*)) {
+    link *temp_list = virus_list;
+    virus_list = f(virus_list);
+    if (temp_list != NULL && temp_list != virus_list) {
+        list_free(temp_list);
+    }
+
+    return virus_list;
+}
+
 int main(int argc, char **argv) {
     link* virus_list = NULL;
     const menu_action_desc menu[] = {
@@ -220,8 +221,12 @@ int main(int argc, char **argv) {
             break;
         }
 
-        virus_list = menu[option - 1].f(virus_list);
+        virus_list = invoke_menu_action(virus_list, menu[option - 1].f);
         printf("DONE.\n\n");
+    }
+    
+    if (virus_list != NULL) {
+        list_free(virus_list);
     }
     return 0;
 }
