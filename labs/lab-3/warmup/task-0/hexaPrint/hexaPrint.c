@@ -3,7 +3,7 @@
 
 void PrintHex(char *buffer, int length) {
     for (int i = 0; i < length; ++i) {
-        printf("%.2X ", (unsigned char)buffer[i]);
+        printf("%02hhX ", (unsigned char)buffer[i]);
     }
 }
 
