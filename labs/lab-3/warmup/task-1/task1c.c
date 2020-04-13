@@ -156,6 +156,7 @@ link* load_signatures_action(link* virus_list) {
 
 link* print_signatures_action(link* virus_list) {
     if (virus_list != NULL) {
+        printf("\n");
         list_print(virus_list, stdout);
     }
     return virus_list;
