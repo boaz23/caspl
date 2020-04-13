@@ -17,50 +17,25 @@ void PrintHex(FILE *file, char *buffer, int length) {
 }
 
 virus* readVirus(FILE *file) {
-    virus *v = NULL;
-    unsigned short sigSize;
-    byte sigSizeBuffer[sizeof(v->SigSize)];
-    char nameTemp[ARR_LEN(v->virusName)];
-    unsigned char *sig = NULL;
+    virus *v = (virus*)malloc(sizeof(virus));
     
-    if (fread(sigSizeBuffer, sizeof(byte), ARR_LEN(sigSizeBuffer), file) < ARR_LEN(sigSizeBuffer)) {
-        return NULL;
-    }
-    if (fread(nameTemp, sizeof(char), ARR_LEN(nameTemp), file) < ARR_LEN(nameTemp)) {
-        return NULL;
-    }
-
-    sigSize = sigSizeBuffer[0] | (sigSizeBuffer[1] << 8);
-    if (fseek(file, sigSize, SEEK_CUR) == -1) {
-        return NULL;
-    }
-    if (fseek(file, -((int)sigSize), SEEK_CUR) == -1) {
+    int len = sizeof(v->SigSize) + sizeof(v->virusName);
+    if (fread(v, sizeof(byte), len, file) < sizeof(byte)*len) {
+        free(v);
         return NULL;
     }
 
-    sig = (unsigned char*)malloc(sigSize);
-    if (sig == NULL) {
+    v->sig = (unsigned char*)malloc(v->SigSize);
+    if (v->sig == NULL) {
+        return NULL;
+    }
+
+    if (fread(v->sig, sizeof(unsigned char), v->SigSize, file) < sizeof(unsigned char)*v->SigSize) {
+        free(v->sig);
+        free(v);
         return NULL;
     }
     
-    for (unsigned short i = 0; i < sigSize; ++i) {
-        if (fread(&sig[i], sizeof(unsigned char), sizeof(unsigned char), file) < sizeof(unsigned char)*sizeof(unsigned char)) {
-            free(sig);
-            return NULL;
-        }
-    }
-
-    v = (virus*)malloc(sizeof(virus));
-    if (v == NULL) {
-        free(sig);
-        return NULL;
-    }
-
-    v->SigSize = sigSize;
-    for (int i = 0; i < ARR_LEN(v->virusName); ++i) {
-        v->virusName[i] = nameTemp[i];
-    }
-    v->sig = sig;
     return v;
 }
 
@@ -86,7 +61,7 @@ int main(int argc, char **argv) {
         v = readVirus(f);
         if (v == NULL) {
             // error occurred
-            perror("an error has occurred while reading the file\n");
+            // perror("an error has occurred while reading the file\n");
             break;
         }
         printVirus(v, fout);
