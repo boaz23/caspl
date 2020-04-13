@@ -4,6 +4,9 @@
 !*.*
 !makefile
 
+# githistory
+.history/
+
 # compilation and debug related files
 *.o
 *.lst
