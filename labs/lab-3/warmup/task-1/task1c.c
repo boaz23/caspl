@@ -65,17 +65,38 @@ virus* readVirus(FILE *file) {
 }
 
 void printVirus(virus *virus, FILE *output) {
-    fprintf(output, "virus name: %s\n", virus->virusName);
-    fprintf(output, "signature length: %d\n", virus->SigSize);
-    PrintHex(output, (char*)virus->sig, virus->SigSize);
+    int i = 0;
+    fprintf(output, "Virus name: %s\n", virus->virusName);
+    fprintf(output, "Virus size: %d\n", virus->SigSize);
+    fprintf(output, "signature:\n");
+    
+    for (i = 0; i + 20 < virus->SigSize; i += 20) {
+        PrintHex(output, (char*)(virus->sig + i), 20);
+        fprintf(output, "\n");
+    }
+    PrintHex(output, (char*)(virus->sig + i), virus->SigSize - i);
     fprintf(output, "\n");
 }
 
 int main(int argc, char **argv) {
     FILE *f = fopen(argv[1], "r");
-    virus *v = readVirus(f);
-    printVirus(v, stdout);
-    free(v);
-    fclose(f);
+    FILE *fout = stdout;
+    virus *v = NULL;
+    while (!feof(f)) {
+        v = readVirus(f);
+        if (v == NULL) {
+            // error occurred
+            perror("an error has occurred while reading the file\n");
+            break;
+        }
+        printVirus(v, fout);
+        free(v);
+        v = NULL;
+        fprintf(fout, "\n");
+    }
+    if (f != NULL) {
+        fclose(f);
+        f = NULL;
+    }
     return 0;
 }
