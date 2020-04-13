@@ -5,6 +5,10 @@
 typedef unsigned char byte;
 #define ARR_LEN(a) (sizeof((a))/sizeof(*(a)))
 
+byte const NOP_OPCODE = 0x90;
+
+int read_int(int *p_num);
+
 typedef struct virus {
     unsigned short SigSize;
     char virusName[16];
@@ -170,7 +174,7 @@ link* quit_action(link *virus_list) {
 void print_virus_detected(unsigned int offset, virus *v) {
     printf("\n");
     printf("virus found\n");
-    printf("offset: 0x%X\n", offset);
+    printf("offset: 0x%X (%d)\n", offset, offset);
     printf("virus name: %s\n", v->virusName);
     printf("signature size: %d\n", v->SigSize);
 }
@@ -192,7 +196,7 @@ void detect_virus(char *buffer, unsigned int size, link *virus_list) {
     }
 }
 
-char *Detect_Virus_File_Name = NULL;
+char *Suspected_File_Name = NULL;
 
 void detect_viruses_in_file(link *virus_list, char *file_name) {
     char file_content[10 * (1 << 10)];
@@ -218,9 +222,47 @@ void detect_viruses_in_file(link *virus_list, char *file_name) {
 
 link* detect_viruses_action(link *virus_list) {
     if (virus_list != NULL) {
-        detect_viruses_in_file(virus_list, Detect_Virus_File_Name);
+        detect_viruses_in_file(virus_list, Suspected_File_Name);
     }
 
+    return virus_list;
+}
+
+void kill_virus(char *fileName, int signitureOffset, int signitureSize) {
+    FILE *file = fopen(fileName, "r+");
+    if (file == NULL) {
+        printf("failed to open the file '%s'\n", fileName);
+        return;
+    }
+    if (fseek(file, signitureOffset, SEEK_SET) != 0) {
+        printf("failed to seek to the requested offset\n");
+        return;
+    }
+
+    for (int i = 0; i < signitureSize; ++i) {
+        int w_offset = signitureOffset + i;
+        if (fwrite(&NOP_OPCODE, sizeof(byte), 1, file) < 1) {
+            printf("failed to write to the file '%s' at offset %d", fileName, w_offset);
+            break;
+        }
+    }
+
+    fclose(file);
+}
+
+link* fix_file_action(link *virus_list) {
+    int offset, signature_size;
+    printf("Enter starting offset: ");
+    if (!read_int(&offset)) {
+        printf("invalid input\n");
+    }
+
+    printf("Enter signature size: ");
+    if (!read_int(&signature_size)) {
+        printf("invalid input\n");
+    }
+
+    kill_virus(Suspected_File_Name, offset, signature_size);
     return virus_list;
 }
 
@@ -234,15 +276,15 @@ void print_menu(const menu_action_desc *menu) {
     }
 }
 
-int read_option(int *option) {
+int read_int(int *p_num) {
     char option_buffer[256];
-    int parseResult = -1;
+    int parse_err = -1;
     if (fgets(option_buffer, ARR_LEN(option_buffer), stdin) == NULL) {
         return 0;
     }
 
-    parseResult = sscanf(option_buffer, "%d", option);
-    if (parseResult == EOF || parseResult == 0) {
+    parse_err = sscanf(option_buffer, "%d", p_num);
+    if (parse_err == EOF || parse_err == 0) {
         return 0;
     }
 
@@ -265,11 +307,12 @@ int main(int argc, char **argv) {
         { "Load signatures", load_signatures_action },
         { "Print signatures", print_signatures_action },
         { "Detect viruses", detect_viruses_action },
+        { "Fix file", fix_file_action },
         { "Quit", quit_action },
         { NULL, NULL }
     };
 
-    Detect_Virus_File_Name = argv[1];
+    Suspected_File_Name = argv[1];
     while (1) {
         int option = 0;
 
@@ -277,7 +320,7 @@ int main(int argc, char **argv) {
         print_menu(menu);
 
         printf("Option: ");
-        if (!read_option(&option)) {
+        if (!read_int(&option)) {
             printf("bad input\n\n");
         }
 
