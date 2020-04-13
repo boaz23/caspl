@@ -36,11 +36,12 @@ void virus_destruct(virus *v) {
 
 virus* readVirus(FILE *file) {
     virus *v = (virus*)malloc(sizeof(virus));
+    int len = sizeof(v->SigSize) + sizeof(v->virusName);
     if (v == NULL) {
         return NULL;
     }
     
-    int len = sizeof(v->SigSize) + sizeof(v->virusName);
+    len = sizeof(v->SigSize) + sizeof(v->virusName);
     if (fread(v, sizeof(byte), len, file) < sizeof(byte)*len) {
         free(v);
         return NULL;
@@ -128,18 +129,21 @@ link* read_virus_list(FILE *file) {
 
 link* load_signatures_action(link* virus_list) {
     char file_name[256];
+    int last_char_index = -1;
+    FILE *file = NULL;
+
     printf("Enter file name: ");
     if (fgets(file_name, ARR_LEN(file_name), stdin) == NULL) {
         printf("bad input\n\n");
         return virus_list;
     }
 
-    int last_char_index = strlen(file_name) - 1;
+    last_char_index = strlen(file_name) - 1;
     if (file_name[last_char_index] == '\n') {
         file_name[last_char_index] = '\0';
     }
     
-    FILE *file = fopen(file_name, "r");
+    *file = fopen(file_name, "r");
     if (file == NULL) {
         printf("could not open '%s' for reading", file_name);
         return virus_list;
@@ -163,8 +167,8 @@ link* quit_action(link *virus_list) {
 }
 
 void print_menu(const menu_action_desc *menu) {
-    const menu_action_desc *menu_item = menu;
     int i = 1;
+    const menu_action_desc *menu_item = menu;
     while (menu_item->name != NULL) {
         printf("%d) %s\n", i, menu_item->name);
         ++menu_item;
@@ -174,11 +178,12 @@ void print_menu(const menu_action_desc *menu) {
 
 int read_option(int *option) {
     char option_buffer[256];
+    int parseResult = -1;
     if (fgets(option_buffer, ARR_LEN(option_buffer), stdin) == NULL) {
         return 0;
     }
 
-    int parseResult = sscanf(option_buffer, "%d", option);
+    parseResult = sscanf(option_buffer, "%d", option);
     if (parseResult == EOF || parseResult == 0) {
         return 0;
     }
