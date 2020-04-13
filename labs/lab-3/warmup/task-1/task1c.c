@@ -126,6 +126,15 @@ link* read_virus_list(FILE *file) {
     return virus_list;
 }
 
+link* load_virus_list(link* virus_list, FILE *file) {
+    link* new_virus_list = read_virus_list(file);
+    if (new_virus_list != NULL) {
+        list_free(virus_list);
+        virus_list = new_virus_list;
+    }
+    return virus_list;
+}
+
 link* load_signatures_action(link* virus_list) {
     char file_name[256];
     printf("Enter file name: ");
@@ -145,11 +154,7 @@ link* load_signatures_action(link* virus_list) {
         return virus_list;
     }
 
-    link* new_virus_list = read_virus_list(file);
-    if (new_virus_list != NULL) {
-        list_free(virus_list);
-        virus_list = new_virus_list;
-    }
+    virus_list = load_virus_list(virus_list, file);
     fclose(file);
     return virus_list;
 }
