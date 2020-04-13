@@ -163,46 +163,56 @@ link* print_signatures_action(link *virus_list) {
     return virus_list;
 }
 
+void print_menu(const menu_action_desc *menu) {
+    const menu_action_desc *menu_item = menu;
+    int i = 1;
+    while (menu_item->name != NULL) {
+        printf("%d) %s\n", i, menu_item->name);
+        ++menu_item;
+        ++i;
+    }
+}
+
+int read_option(int *option) {
+    char option_buffer[256];
+    if (fgets(option_buffer, ARR_LEN(option_buffer), stdin) == NULL) {
+        return 0;
+    }
+
+    int parseResult = sscanf(option_buffer, "%d", option);
+    if (parseResult == EOF || parseResult == 0) {
+        return 0;
+    }
+
+    return 1;
+}
+
 int main(int argc, char **argv) {
-    menu_action_desc menu[] = {
+    link* virus_list = NULL;
+    const menu_action_desc menu[] = {
         { "Load signatures", load_signatures_action },
         { "Print signatures", print_signatures_action },
         { "Quit", print_signatures_action },
         { NULL, NULL }
     };
-    
+
     while (1) {
-        const menu_action_desc *menu_item = menu;
-        int i = 1;
-        char option_buffer[256];
         int option = 0;
 
         printf("Please choose an action:\n");
-        while (menu_item->name != NULL) {
-            printf("%d) %s\n", i, menu->name);
-            ++menu_item;
-            ++i;
-        }
+        print_menu(menu);
 
         printf("Option: ");
-        if (fgets(option_buffer, ARR_LEN(option_buffer), stdin) == NULL) {
+        if (!read_option(&option)) {
             printf("bad input\n\n");
-            continue;
-        }
-        int parseResult = sscanf(option_buffer, "%d", &option);
-        if (parseResult == EOF || parseResult == 0) {
-            printf("bad input\n\n");
-            continue;
         }
 
-        if (1 <= option && option <= ARR_LEN(menu)) {
-            menu[option - 1].f();
-        }
-        else {
+        if (!(1 <= option && option <= ARR_LEN(menu))) {
             printf("invalid action chosen\n\n");
             break;
         }
 
+        virus_list = menu[option - 1].f(virus_list);
         printf("DONE.\n\n");
     }
     return 0;
