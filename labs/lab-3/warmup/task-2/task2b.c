@@ -194,20 +194,20 @@ void detect_virus(char *buffer, unsigned int size, link *virus_list) {
 
 char *Detect_Virus_File_Name = NULL;
 
-void detect_viruses(link *virus_list) {
+void detect_viruses_in_file(link *virus_list, char *file_name) {
     char file_content[10 * (1 << 10)];
     FILE* file = NULL;
     unsigned int size = 0;
     
-    file = fopen(Detect_Virus_File_Name, "r");
+    file = fopen(file_name, "r");
     if (file == NULL) {
-        printf("cannot open the file '%s' for reading\n", Detect_Virus_File_Name);
+        printf("cannot open the file '%s' for reading\n", file_name);
         return;
     }
 
     size = fread(file_content, sizeof(char), ARR_LEN(file_content), file);
     if (ferror(file)) {
-        printf("an error has occurred while reading the file '%s'\n", Detect_Virus_File_Name);
+        printf("an error has occurred while reading the file '%s'\n", file_name);
     }
     else {
         detect_virus(file_content, size, virus_list);
@@ -218,7 +218,7 @@ void detect_viruses(link *virus_list) {
 
 link* detect_viruses_action(link *virus_list) {
     if (virus_list != NULL) {
-        detect_viruses(virus_list);
+        detect_viruses_in_file(virus_list, Detect_Virus_File_Name);
     }
 
     return virus_list;
