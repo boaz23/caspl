@@ -9,7 +9,7 @@
             "type": "cppdbg",
             "request": "launch",
             "program": "${workspaceFolder}/virusDetector",
-            "args": ["VIRUS"],
+            "args": ["signatures"],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
             "environment": [],

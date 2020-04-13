@@ -145,7 +145,7 @@ link* load_signatures_action(link* virus_list) {
     
     file = fopen(file_name, "r");
     if (file == NULL) {
-        printf("could not open '%s' for reading", file_name);
+        printf("could not open the file '%s' for reading\n", file_name);
         return virus_list;
     }
 
@@ -164,6 +164,63 @@ link* print_signatures_action(link* virus_list) {
 
 link* quit_action(link *virus_list) {
     exit(0);
+    return virus_list;
+}
+
+void print_virus_detected(unsigned int offset, virus *v) {
+    printf("\n");
+    printf("virus found\n");
+    printf("offset: 0x%X\n", offset);
+    printf("virus name: %s\n", v->virusName);
+    printf("signature size: %d\n", v->SigSize);
+}
+
+void detect_single_virus(char *buffer, unsigned int size, virus *v) {
+    char *p_buffer_pos = buffer;
+    for (unsigned int i = 0; i < size; ++i, ++p_buffer_pos) {
+        if (memcmp(p_buffer_pos, v->sig, v->SigSize) == 0) {
+            print_virus_detected(i, v);
+        }
+    }
+}
+
+void detect_virus(char *buffer, unsigned int size, link *virus_list) {
+    link *current = virus_list;
+    while (current != NULL) {
+        detect_single_virus(buffer, size, current->vir);
+        current = current->nextVirus;        
+    }
+}
+
+char *Detect_Virus_File_Name = NULL;
+
+void detect_viruses(link *virus_list) {
+    char file_content[10 * (1 << 10)];
+    FILE* file = NULL;
+    unsigned int size = 0;
+    
+    file = fopen(Detect_Virus_File_Name, "r");
+    if (file == NULL) {
+        printf("cannot open the file '%s' for reading\n", Detect_Virus_File_Name);
+        return;
+    }
+
+    size = fread(file_content, sizeof(char), ARR_LEN(file_content), file);
+    if (ferror(file)) {
+        printf("an error has occurred while reading the file '%s'\n", Detect_Virus_File_Name);
+    }
+    else {
+        detect_virus(file_content, size, virus_list);
+    }
+
+    fclose(file);
+}
+
+link* detect_viruses_action(link *virus_list) {
+    if (virus_list != NULL) {
+        detect_viruses(virus_list);
+    }
+
     return virus_list;
 }
 
@@ -207,10 +264,12 @@ int main(int argc, char **argv) {
     const menu_action_desc menu[] = {
         { "Load signatures", load_signatures_action },
         { "Print signatures", print_signatures_action },
+        { "Detect viruses", detect_viruses_action },
         { "Quit", quit_action },
         { NULL, NULL }
     };
 
+    Detect_Virus_File_Name = argv[1];
     while (1) {
         int option = 0;
 
