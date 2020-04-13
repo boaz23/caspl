@@ -17,6 +17,11 @@ struct link {
     virus *vir;
 };
 
+typedef struct menu_action_desc {
+   char *name;
+   void (*f)(); 
+} menu_action_desc;
+
 void PrintHex(FILE *file, char *buffer, int length) {
     for (int i = 0; i < length; ++i) {
         fprintf(file, "%02hhX ", (unsigned char)buffer[i]);
@@ -77,24 +82,47 @@ link* list_append(link* virus_list, virus* data);
 void list_free(link *virus_list);
 
 int main(int argc, char **argv) {
-    FILE *f = fopen(argv[1], "r");
-    FILE *fout = stdout;
-    virus *v = NULL;
-    while (!feof(f)) {
-        v = readVirus(f);
-        if (v == NULL) {
-            // error occurred
-            // perror("an error has occurred while reading the file\n");
+    menu_action_desc menu[] = {
+        { "Load signatures", NULL },
+        { "Print signatures", NULL },
+        { "Quit", NULL },
+        { NULL, NULL }
+    };
+    
+    while (1) {
+        const menu_action_desc *menu_item = menu;
+        int i = 0;
+        char option_buffer[256];
+        int option = 0;
+
+        printf("Please choose an action:\n");
+        while (menu_item->name != NULL) {
+            printf("%d) %s\n", i, menu->name);
+            ++menu_item;
+            ++i;
+        }
+
+        printf("Option: ");
+        if (fgets(option_buffer, ARR_LEN(option_buffer), stdin) == NULL) {
+            printf("bad input\n\n");
+            continue;
+        }
+        int parseResult = sscanf(option_buffer, "%d", &option);
+        if (parseResult == EOF || parseResult == 0) {
+            printf("bad input\n\n");
+            continue;
+        }
+
+        --option;
+        if (0 <= option && option < ARR_LEN(menu)) {
+            menu[option].f();
+        }
+        else {
+            printf("invalid action chosen\n\n");
             break;
         }
-        printVirus(v, fout);
-        free(v);
-        v = NULL;
-        fprintf(fout, "\n");
-    }
-    if (f != NULL) {
-        fclose(f);
-        f = NULL;
+
+        printf("DONE.\n\n");
     }
     return 0;
 }
