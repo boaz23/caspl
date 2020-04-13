@@ -145,8 +145,11 @@ link* load_signatures_action(link* virus_list) {
         return virus_list;
     }
 
-    list_free(virus_list);
-    virus_list = read_virus_list(file);
+    link* new_virus_list = read_virus_list(file);
+    if (new_virus_list != NULL) {
+        list_free(virus_list);
+        virus_list = new_virus_list;
+    }
     fclose(file);
     return virus_list;
 }
