@@ -25,6 +25,9 @@ void PrintHex(FILE *file, char *buffer, int length) {
 
 virus* readVirus(FILE *file) {
     virus *v = (virus*)malloc(sizeof(virus));
+    if (v == NULL) {
+        return NULL;
+    }
     
     int len = sizeof(v->SigSize) + sizeof(v->virusName);
     if (fread(v, sizeof(byte), len, file) < sizeof(byte)*len) {
