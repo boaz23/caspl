@@ -144,7 +144,7 @@ link* load_signatures_action(link* virus_list) {
     }
 
     int last_char_index = strlen(file_name) - 1;
-    if (file_name[last_char_index] = '\n') {
+    if (file_name[last_char_index] == '\n') {
         file_name[last_char_index] = '\0';
     }
     
@@ -166,7 +166,7 @@ link* print_signatures_action(link* virus_list) {
     return virus_list;
 }
 
-link* print_signatures_action(link *virus_list) {
+link* quit_action(link *virus_list) {
     exit(0);
     return virus_list;
 }
@@ -200,7 +200,7 @@ int main(int argc, char **argv) {
     const menu_action_desc menu[] = {
         { "Load signatures", load_signatures_action },
         { "Print signatures", print_signatures_action },
-        { "Quit", print_signatures_action },
+        { "Quit", quit_action },
         { NULL, NULL }
     };
 

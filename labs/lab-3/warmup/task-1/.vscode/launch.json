@@ -8,7 +8,7 @@
             "name": "GDB debug",
             "type": "cppdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/task1c",
+            "program": "${workspaceFolder}/virusDetector",
             "args": ["VIRUS"],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
