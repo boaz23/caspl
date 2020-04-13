@@ -143,7 +143,7 @@ link* load_signatures_action(link* virus_list) {
         file_name[last_char_index] = '\0';
     }
     
-    *file = fopen(file_name, "r");
+    file = fopen(file_name, "r");
     if (file == NULL) {
         printf("could not open '%s' for reading", file_name);
         return virus_list;
