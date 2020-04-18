@@ -46,7 +46,7 @@ virus* readVirus(FILE *file) {
     }
     
     len = sizeof(v->SigSize) + sizeof(v->virusName);
-    if (fread(v, sizeof(byte), len, file) < sizeof(byte)*len) {
+    if (fread(v, sizeof(byte), len, file) < len) {
         free(v);
         return NULL;
     }
@@ -57,7 +57,7 @@ virus* readVirus(FILE *file) {
         return NULL;
     }
 
-    if (fread(v->sig, sizeof(unsigned char), v->SigSize, file) < sizeof(unsigned char)*v->SigSize) {
+    if (fread(v->sig, sizeof(unsigned char), v->SigSize, file) < v->SigSize) {
         free(v->sig);
         free(v);
         return NULL;
