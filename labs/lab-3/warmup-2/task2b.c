@@ -25,14 +25,15 @@ void virus_destruct(virus *v) {
 
 virus* readVirus(FILE* file) {
     virus *v = (virus*)malloc(sizeof(virus));
-
     unsigned char *sig = NULL;
+    int len = 0;
+
     if (v == NULL) {
         return NULL;
     }
 
-    int len = sizeof(v->SigSize) + sizeof(v->virusName);
-    if (fread(v, sizeof(char), len, file) < len) {
+    len = sizeof(v->SigSize) + sizeof(v->virusName);
+    if (fread(v, sizeof(char), len, file) < len*sizeof(char)) {
         free(v);
         return NULL;
     }
@@ -44,7 +45,7 @@ virus* readVirus(FILE* file) {
     }
 
     v->sig = sig;
-    if (fread(sig, sizeof(unsigned char), v->SigSize, file) < v->SigSize) {
+    if (fread(sig, sizeof(unsigned char), v->SigSize, file) < v->SigSize*sizeof(unsigned char)) {
         virus_destruct(v);
         return NULL;
     }
