@@ -1,0 +1,8 @@
+{
+    "files.associations": {
+        "string.h": "c",
+        "stddef.h": "c",
+        "functional": "c",
+        "type_traits": "c"
+    }
+}
