@@ -11,7 +11,7 @@ void readNumber(int *number){
     sscanf(input, "%d", number);
 }
 
-int c_checkValidity(int x, int y){
+char c_checkValidity(int x, int y){
     if(y <= x){
         return 1;
     }

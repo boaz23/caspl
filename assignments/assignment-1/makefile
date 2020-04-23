@@ -17,7 +17,7 @@ task1:	$(OBJ_DIR)/main_task1Assignment1.o $(OBJ_DIR)/asm_task1Assignment1.o
 task2: $(OBJ_DIR)/main_task2Assignment1.o $(OBJ_DIR)/asm_task2Assignment1.o
 	$(CC) -o $(BIN_DIR)/asm_task2Assignment1.bin $(OBJ_DIR)/main_task2Assignment1.o $(OBJ_DIR)/asm_task2Assignment1.o
 
-# .c/.s compile rules
+# .c/.s compile rulesint
 $(OBJ_DIR)/%.o : $(SRC_DIR)/%.c
 	$(CC) -c $(CC_FLAGS) $< -o $@
 

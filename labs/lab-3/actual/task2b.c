@@ -115,7 +115,7 @@ void list_free(link *virus_list) {
 }
 
 // ----------------------------------------
-// -------- BEGIN USER INTERFACE ----------
+// --------- BEGIN USER INTERFACE ---------
 // ----------------------------------------
 
 char *SuspectedFileName = NULL;
@@ -309,7 +309,7 @@ link* fix_file_action(link *vl) {
     else {
         fix_file(SuspectedFileName);
     }
-    
+
     return vl;
 }
 
