@@ -1,5 +1,5 @@
 PRG_NAME = flame2
-MAIN_NAME = task2b
+MAIN_NAME = task2c
 MAIN_OBJ = $(MAIN_NAME).o
 MAIN_C = $(MAIN_NAME).c
 OBJECTS = $(MAIN_OBJ) start.o util.o
