@@ -79,7 +79,7 @@ int write_line(FILE f) {
 /* --------------------------------- */
 /* ---------- DEBUG STUFF ---------- */
 /* --------------------------------- */
-#define dbg_out stdin
+#define dbg_out stderr
 int DebugMode = 0;
 
 void dbg_print(void *buf, SYS_CALL_ARG len) {
@@ -122,98 +122,125 @@ int dbg_sys_call(int cid, SYS_CALL_ARG arg0, SYS_CALL_ARG arg1, SYS_CALL_ARG arg
 /* -------------------------------- */
 /* ---------- BEGIN TASK ---------- */
 /* -------------------------------- */
-#define RW_READ  0
-#define RW_WRITE 1
+#define ERROR_CODE 0x55
+#define SYS_GETDENTS 141
+#define ARR_LEN(a) (sizeof((a)) / sizeof(*(a)))
 
-void dbg_print_char_transform(char c, char c_old) {
-    dbg_print_num(c_old);
-    dbg_print_s("\t");
-    dbg_print_num(c);
-    dbg_print_line();
+#define DT_UNKNOWN 0
+#define DT_FIFO    1
+#define DT_CHR     2
+#define DT_DIR     4
+#define DT_BLK     6
+#define DT_REG     8
+#define DT_LNK     10
+#define DT_SOCK    12
+#define DT_WHT     14
+
+typedef struct linux_dirent {
+    unsigned long  d_ino;
+    unsigned long  d_off;
+    unsigned short d_reclen;
+    char           d_name[];
+} linux_dirent;
+char linux_dirent_get_d_type(linux_dirent *d) {
+    return *((char *)d + d->d_reclen - 1);
 }
 
-int read_input(FILE f_in, FILE f_out) {
-    int ec = 0;
+int getdents(FILE f, linux_dirent *dirp, int count) {
+    return sys_call(SYS_GETDENTS, f, (SYS_CALL_ARG)dirp, count);
+}
+
+char* get_dirent_type_name(char d_type) {
+    return (d_type == DT_UNKNOWN) ? "Unkown" :
+           (d_type == DT_REG)     ? "regular" :
+           (d_type == DT_DIR)     ? "directory" :
+           (d_type == DT_FIFO)    ? "FIFO" :
+           (d_type == DT_SOCK)    ? "socket" :
+           (d_type == DT_LNK)     ? "symlink" :
+           (d_type == DT_BLK)     ? "block dev" :
+           (d_type == DT_CHR)     ? "char dev" :
+           "???";
+}
+
+int print_file_dirs_of_fd(FILE f_out, FILE fd, char *prefix, int append) {
+    int err = 0;
+    char buf[8192];
+    int nread = 0;
+    int bpos = 0;
+    linux_dirent *d = NULL;
+    int prefix_len = 0;
+    if (prefix) {
+        prefix_len = strlen(prefix);
+    }
+
     while (1) {
-        char c = '\0', c_old = '\0';
-        int r = read_c(f_in, &c);
-        if (r == 0) {
-            /* EOF */
-            break;
-        }
-        else if (r < 0) {
-            /* error */
-            ec = 1;
+        nread = getdents(fd, (linux_dirent *)buf, ARR_LEN(buf));
+        if (nread < 0) {
+            /* ERROR */
+            err = 3;
             break;
         }
 
-        c_old = c;
-        if (c == '\n') {
-            write_c(f_out, c);
-            if (DebugMode) {
-                dbg_print_c('\n');
-            }
+        if (nread == 0) {
+            /* END OF DIR */
+            break;
         }
-        else {
-            if ('a' <= c && c <= 'z') {
-                c += 'A' - 'a';
-            }
 
+        for (bpos = 0; bpos < nread; bpos += d->d_reclen) {
+            char d_type = DT_UNKNOWN;
+            int selected = 0;
+            d = (linux_dirent *)(buf + bpos);
+            d_type = linux_dirent_get_d_type(d);
+            if (!prefix || strncmp(prefix, d->d_name, prefix_len) == 0) {
+                write_s(f_out, d->d_name);
+                write_s(f_out, ", ");
+                write_s(f_out, get_dirent_type_name(d_type));
+                selected = 1;
+            }
             if (DebugMode) {
-                dbg_print_char_transform(c, c_old);
+                dbg_print_s("dirent length=");
+                dbg_print_num(d->d_reclen);
+                dbg_print_s(", name='");
+                dbg_print_s(d->d_name);
+                dbg_print_s("'");
             }
 
-            write_c(f_out, c);
+            if (DebugMode && !selected) {
+                dbg_print_line();
+            }
+            else if (DebugMode || selected) {
+                write_line(f_out);
+            }
         }
     }
 
-    return ec;
+    return err;
 }
 
-int task_open_file(FILE f_out, char *file_name, int rw_mode) {
-    char *s_open_mode = NULL;
-    int flags = 0;
-    int mode = 0;
-    FILE f = -1;
-
-    if (rw_mode == RW_READ) {
-        flags = O_RDONLY;
-        mode = 0;
-        s_open_mode = "reading";
-    }
-    else if (rw_mode == RW_WRITE) {
-        flags = O_CREAT | O_TRUNC | O_WRONLY;
-        mode = F_MODE_ALL;
-        s_open_mode = "writing";
+int print_file_dirs_of_dir(FILE f_out, char *dir, char *prefix, int append) {
+    int err = 0;
+    FILE fd = open(dir, O_DIRECTORY | O_RDONLY, 0);
+    if (fd < 0) {
+        write_s(f_out, "Could not open the directory '");
+        write_s(f_out, dir);
+        write_s(f_out, " ' for reading");
+        write_line(f_out);
+        err = fd;
     }
     else {
-        return -1;
+        err = print_file_dirs_of_fd(f_out, fd, prefix, append);
+        close(fd);
     }
 
-    f = open(file_name, flags, mode);
-    if (f < 0) {
-        write_s(f_out, "could not open the file '");
-        write_s(f_out, file_name);
-        write_s(f_out, "' for ");
-        write_s(f_out, s_open_mode);
-        write_line(f_out);
-    }
-
-    return f;
-}
-
-void dbg_print_io_names(char *f_name, char *io_name) {
-    dbg_print_s(io_name);
-    dbg_print_s(" file name: ");
-    dbg_print_s(f_name);
-    dbg_print_line();
+    return err;
 }
 
 int main (int argc , char* argv[], char* envp[]) {
     int exit_code = 0;
-    FILE f_default_out = stdout;
-    FILE f_in = stdin, f_out = f_default_out;
-    char *f_in_name = "stdin", *f_out_name = "stdout";
+    FILE f_in = stdin, f_out = stdout;
+
+    int append = 0;
+    char *prefix = NULL;
 
     int i = 0;
     for (i = 0; i < argc; ++i) {
@@ -225,31 +252,35 @@ int main (int argc , char* argv[], char* envp[]) {
     }
 
     for (i = 0; i < argc; ++i) {
-        if (strncmp("-i", argv[i], 2) == 0) {
-            f_in_name = argv[i] + 2;
-            f_in = task_open_file(f_default_out, f_in_name, RW_READ);
-            if (f_in < 0) {
+        if (strncmp("-p", argv[i], 2) == 0) {
+            if (prefix) {
+                write_s(f_out, "Cannot use both '-a' and '-p'");
+                exit_code = 1;
+                break;
+            }
+            else {
+                prefix = argv[i] + 2;
+            }
+        }
+        else if (strncmp("-a", argv[i], 2) == 0) {
+            if (prefix) {
+                write_s(f_out, "Cannot use both '-a' and '-p'");
                 exit_code = 2;
                 break;
             }
-        }
-        else if (strncmp("-o", argv[i], 2) == 0) {
-            f_out_name = argv[i] + 2;
-            f_out = task_open_file(f_default_out, f_out_name, RW_WRITE);
-            if (f_out < 0) {
-                exit_code = 3;
-                break;
+            else {
+                prefix = argv[i] + 2;
+                append = 1;
             }
         }
     }
 
-    if (DebugMode) {
-        dbg_print_io_names(f_in_name, "input");
-        dbg_print_io_names(f_out_name, "output");
-    }
-
+    write_s(f_out, "Flame 2 strikes!\n");
     if (exit_code == 0) {
-        exit_code = read_input(f_in, f_out);
+        exit_code = print_file_dirs_of_dir(f_out, ".", prefix, append);
+    }
+    if (exit_code != 0) {
+        exit_code = ERROR_CODE;
     }
 
     close(f_in);

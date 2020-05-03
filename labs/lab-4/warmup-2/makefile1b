@@ -1,5 +1,7 @@
-PRG_NAME = task1b
-MAIN_OBJ = $(PRG_NAME).o
+PRG_NAME = encoder
+MAIN_NAME = task1b
+MAIN_OBJ = $(MAIN_NAME).o
+MAIN_C = $(MAIN_NAME).c
 OBJECTS = $(MAIN_OBJ) start.o util.o
 
 compile: $(OBJECTS)
@@ -11,8 +13,8 @@ start.o: start.s
 util.o: util.c util.h
 	gcc -g -m32 -Wall -ansi -c -nostdlib -fno-stack-protector util.c -o util.o
 
-$(MAIN_OBJ): $(PRG_NAME).c
-	gcc -g -m32 -Wall -ansi -c -nostdlib -fno-stack-protector $(PRG_NAME).c -o $(MAIN_OBJ)
+$(MAIN_OBJ): $(MAIN_C)
+	gcc -g -m32 -Wall -ansi -c -nostdlib -fno-stack-protector $(MAIN_C) -o $(MAIN_OBJ)
 
 .PHONY: clean
 clean:
