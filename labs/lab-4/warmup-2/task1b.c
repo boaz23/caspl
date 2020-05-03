@@ -79,7 +79,7 @@ int write_line(FILE f) {
 /* --------------------------------- */
 /* ---------- DEBUG STUFF ---------- */
 /* --------------------------------- */
-#define dbg_out stdin
+#define dbg_out stderr
 int DebugMode = 0;
 
 void dbg_print(void *buf, SYS_CALL_ARG len) {
