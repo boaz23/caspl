@@ -5,13 +5,13 @@ OBJECTS = $(MAIN_OBJ) start.o util.o
 compile: $(OBJECTS)
 	ld -g -m elf_i386 $(OBJECTS) -o $(PRG_NAME)
 
-start.o:
+start.o: start.s
 	nasm -g -f elf32 start.s -o start.o
 
-util.o:
+util.o: util.c util.h
 	gcc -g -m32 -Wall -ansi -c -nostdlib -fno-stack-protector util.c -o util.o
 
-$(MAIN_OBJ):
+$(MAIN_OBJ): $(PRG_NAME).c
 	gcc -g -m32 -Wall -ansi -c -nostdlib -fno-stack-protector $(PRG_NAME).c -o $(MAIN_OBJ)
 
 .PHONY: clean
