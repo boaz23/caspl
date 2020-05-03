@@ -1,4 +1,4 @@
-PRG_NAME = task2b
+PRG_NAME = task1b
 MAIN_OBJ = $(PRG_NAME).o
 OBJECTS = $(MAIN_OBJ) start.o util.o
 
