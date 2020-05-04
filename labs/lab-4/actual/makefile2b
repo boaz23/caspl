@@ -1,0 +1,19 @@
+PRG_NAME = flame2
+MAIN = task2b
+OBJECTS = $(MAIN).o util.o start.o
+
+compile: $(OBJECTS)
+	ld -g -m elf_i386 $(OBJECTS) -o $(PRG_NAME)
+	
+start.o: start.s
+	nasm -g -f elf32 start.s -o start.o
+
+util.o: util.h util.c
+	gcc -g -m32 -Wall -ansi -c -nostdlib -fno-stack-protector util.c -o util.o
+
+$(MAIN).o: $(MAIN).c
+	gcc -g -m32 -Wall -ansi -c -nostdlib -fno-stack-protector $(MAIN).c -o $(MAIN).o
+
+.PHONY: clean
+clean:
+	rm -f *.o $(PRG_NAME)
