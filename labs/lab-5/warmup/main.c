@@ -135,7 +135,7 @@ INP_LOOP do_cmd_from_input(char *buf) {
 
 void set_dbg_mode_from_args(int argc, char *argv[]) {
     for (int i = 0; i < argc; ++i) {
-        if (strncmp("-D", argv[i], 2) == 0) {
+        if (strncmp("-d", argv[i], 2) == 0) {
             DebugMode = TRUE;
             break;
         }
