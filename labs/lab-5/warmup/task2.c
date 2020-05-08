@@ -39,6 +39,13 @@ typedef struct process {
 	struct process *next;	                  /* next process in chain */
 } process;
 
+char* process_get_status_name(process *p) {
+	return  (p->status == TERMINATED)	? "Terminated"	:
+			(p->status == RUNNING)		? "Running"		:
+			(p->status == SUSPENDED)	? "Suspended"	:
+			"???";
+}
+
 bool send_signal_to_process(pid_t pid, int sig) {
 	int err = kill(pid, sig);
 	if (err < 0) {
@@ -54,14 +61,7 @@ bool send_signal_to_process(pid_t pid, int sig) {
 	return TRUE;
 }
 
-char* process_get_status_name(process *p) {
-	return  (p->status == TERMINATED)	? "Terminated"	:
-			(p->status == RUNNING)		? "Running"		:
-			(p->status == SUSPENDED)	? "Suspended"	:
-			"???";
-}
-
-void freeProcess(process *p) {
+void terminateProcess(process *p) {
 	if (p) {
 		if (p->status == RUNNING) {
 			// terminate the process
@@ -77,6 +77,12 @@ void freeProcess(process *p) {
 		else if (p->status == TERMINATED) {
 			// do nothing
 		}
+	}
+}
+
+void freeProcess(process *p) {
+	if (p) {
+		terminateProcess(p);
 		freeCmdLines(p->cmd);
 		free(p);
 	}
@@ -126,6 +132,21 @@ void updateProcessStatus(process* process_list, int pid, int status) {
 	}
 }
 
+void update_process_from_wait_status(process *p, int status) {
+	if (WIFEXITED(status)) {
+		p->status = TERMINATED;
+	} else if (WIFSIGNALED(status)) {
+		p->status = TERMINATED;
+	} else if (WIFSTOPPED(status)) {
+		p->status = SUSPENDED;
+	}
+#ifdef WCONTINUED
+	else if (WIFCONTINUED(status)) {
+		p->status = RUNNING;
+	}
+#endif
+}
+
 void update_process(process *p) {
 	int status;
 #ifdef WCONTINUED
@@ -139,18 +160,7 @@ void update_process(process *p) {
 		}
 	}
 	else if (res > 0) {
-		if (WIFEXITED(status)) {
-			p->status = TERMINATED;
-		} else if (WIFSIGNALED(status)) {
-			p->status = TERMINATED;
-		} else if (WIFSTOPPED(status)) {
-			p->status = SUSPENDED;
-		}
-	#ifdef WCONTINUED
-		else if (WIFCONTINUED(status)) {
-			p->status = RUNNING;
-		}
-	#endif
+		update_process_from_wait_status(p, status);
 	}
 }
 
@@ -318,20 +328,46 @@ void dbg_print_exec_info(pid_t pid, cmdLine *pCmdLine) {
 	fprintf(dbg_out, "\n");
 }
 
+void parent_failed_fork(pid_t pid, cmdLine *pCmdLine, process **process_list) {
+	if (DebugMode) {
+		perror("fork");
+	}
+	else {
+		printf("fork error, exiting...\n");
+	}
+	freeProcessList(*process_list);
+	exit(EXIT_FAILURE);
+}
+
+void child_do_exec(cmdLine *pCmdLine) {
+	execvp(cmd_get_path(pCmdLine), pCmdLine->arguments);
+	if (DebugMode) {
+		perror("execv");
+	}
+	else {
+		printf("execv error, exiting...\n");
+	}
+	_exit(EXIT_FAILURE);
+}
+
+void wait_for_child(pid_t pid, process **process_list) {
+	int status;
+	int res = waitpid(pid, &status, 0);
+	if (res < 0) {
+		if (DebugMode) {
+			perror("waitpid");
+		}
+	}
+	else {
+		updateProcessStatus(*process_list, pid, TERMINATED);
+	}
+}
+
 void parent_post_fork(pid_t pid, cmdLine *pCmdLine, process **process_list) {
 	addProcess(process_list, pCmdLine, pid);
 	if (pCmdLine->blocking) {
 		// wait for the process to finish
-		int status;
-		int res = waitpid(pid, &status, 0);
-		if (res < 0) {
-			if (DebugMode) {
-				perror("waitpid");
-			}
-		}
-		else {
-			updateProcessStatus(*process_list, pid, TERMINATED);
-		}
+		wait_for_child(pid, process_list);
 	}
 	else {
 		if (!DebugMode) {
@@ -347,25 +383,12 @@ void execute(cmdLine *pCmdLine, process **process_list) {
 	}
 	
 	if (pid < 0) {
-		if (DebugMode) {
-			perror("fork");
-		}
-		else {
-			printf("fork error, exiting...\n");
-		}
-		freeProcessList(*process_list);
-		exit(EXIT_FAILURE);
+		// fork failed
+		parent_failed_fork(pid, pCmdLine, process_list);
 	}
 	else if (pid == 0) {
 		// child, executes the command
-		execvp(cmd_get_path(pCmdLine), pCmdLine->arguments);
-		if (DebugMode) {
-			perror("execv");
-		}
-		else {
-			printf("execv error, exiting...\n");
-		}
-		_exit(EXIT_FAILURE);
+		child_do_exec(pCmdLine);
 	}
 	else {
 		// parent, actual terminal
@@ -402,22 +425,8 @@ INP_LOOP do_cmd_from_input(char *buf, process **process_list) {
 	return inp_loop;
 }
 
-void set_dbg_mode_from_args(int argc, char *argv[]) {
-	dbg_out = stderr;
-	for (int i = 0; i < argc; ++i) {
-		if (strncmp("-d", argv[i], 2) == 0) {
-			DebugMode = TRUE;
-			break;
-		}
-	}
-}
-
-int main(int argc, char *argv[]) {
+void do_input_loop(process **process_list) {
 	INP_LOOP inp_loop = INP_LOOP_CONTINUE;
-	process *process_list = NULL;
-	
-	set_dbg_mode_from_args(argc, argv);
-
 	while (!inp_loop) {
 		char buf[LINE_MAX];
 		char *res_input = fgets(buf, ARR_LEN(buf), stdin);
@@ -429,9 +438,24 @@ int main(int argc, char *argv[]) {
 			continue;
 		}
 
-		inp_loop = do_cmd_from_input(buf, &process_list);
+		inp_loop = do_cmd_from_input(buf, process_list);
 	}
-	
+}
+
+void set_dbg_mode_from_args(int argc, char *argv[]) {
+	dbg_out = stderr;
+	for (int i = 0; i < argc; ++i) {
+		if (strncmp("-d", argv[i], 2) == 0) {
+			DebugMode = TRUE;
+			break;
+		}
+	}
+}
+
+int main(int argc, char *argv[]) {
+	process *process_list = NULL;
+	set_dbg_mode_from_args(argc, argv);
+	do_input_loop(&process_list);
 	freeProcessList(process_list);
 	return EXIT_SUCCESS;
 }
