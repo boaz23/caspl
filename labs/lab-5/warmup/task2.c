@@ -18,6 +18,15 @@ typedef enum bool {
 FILE *dbg_out	= NULL;
 bool DebugMode	= FALSE;
 
+bool dbg_print_error(char *err) {
+	if (DebugMode) {
+		perror(err);
+		return TRUE;
+	}
+
+	return FALSE;
+}
+
 char* cmd_get_path(cmdLine *pCmdLine) {
 	return pCmdLine->arguments[0];
 }
@@ -49,10 +58,7 @@ char* process_get_status_name(process *p) {
 bool send_signal_to_process(pid_t pid, int sig) {
 	int err = kill(pid, sig);
 	if (err < 0) {
-		if (DebugMode) {
-			perror("kill");
-		}
-		else {
+		if (!dbg_print_error("kill")) {
 			printf("signal send error\n");
 		}
 		return FALSE;
@@ -155,9 +161,7 @@ void update_process(process *p) {
 	int res = waitpid(p->pid, &status, WNOHANG | WUNTRACED);
 #endif
 	if (res < 0) {
-		if (DebugMode) {
-			perror("waitpid");
-		}
+		dbg_print_error("waitpid");
 	}
 	else if (res > 0) {
 		update_process_from_wait_status(p, status);
@@ -329,10 +333,7 @@ void dbg_print_exec_info(pid_t pid, cmdLine *pCmdLine) {
 }
 
 void parent_failed_fork(pid_t pid, cmdLine *pCmdLine, process **process_list) {
-	if (DebugMode) {
-		perror("fork");
-	}
-	else {
+	if (!dbg_print_error("fork")) {
 		printf("fork error, exiting...\n");
 	}
 	freeProcessList(*process_list);
@@ -341,10 +342,7 @@ void parent_failed_fork(pid_t pid, cmdLine *pCmdLine, process **process_list) {
 
 void child_do_exec(cmdLine *pCmdLine) {
 	execvp(cmd_get_path(pCmdLine), pCmdLine->arguments);
-	if (DebugMode) {
-		perror("execv");
-	}
-	else {
+	if (!dbg_print_error("execv")) {
 		printf("execv error, exiting...\n");
 	}
 	_exit(EXIT_FAILURE);
@@ -354,9 +352,7 @@ void wait_for_child(pid_t pid, process **process_list) {
 	int status;
 	int res = waitpid(pid, &status, 0);
 	if (res < 0) {
-		if (DebugMode) {
-			perror("waitpid");
-		}
+		dbg_print_error("waitpid");
 	}
 	else {
 		updateProcessStatus(*process_list, pid, TERMINATED);
