@@ -39,6 +39,21 @@ typedef struct process {
 	struct process *next;	                  /* next process in chain */
 } process;
 
+bool send_signal_to_process(pid_t pid, int sig) {
+	int err = kill(pid, sig);
+	if (err < 0) {
+		if (DebugMode) {
+			perror("kill");
+		}
+		else {
+			printf("signal send error\n");
+		}
+		return FALSE;
+	}
+
+	return TRUE;
+}
+
 char* process_get_status_name(process *p) {
 	return  (p->status == TERMINATED)	? "Terminated"	:
 			(p->status == RUNNING)		? "Running"		:
@@ -47,8 +62,24 @@ char* process_get_status_name(process *p) {
 }
 
 void freeProcess(process *p) {
-	freeCmdLines(p->cmd);
-	free(p);
+	if (p) {
+		if (p->status == RUNNING) {
+			// terminate the process
+			send_signal_to_process(p->pid, SIGINT);
+		}
+		else if (p->status == SUSPENDED) {
+			// terminate the process
+			if (send_signal_to_process(p->pid, SIGINT) &&
+				send_signal_to_process(p->pid, SIGCONT)) {
+				// do nothing, we've done everything we needed to
+			}
+		}
+		else if (p->status == TERMINATED) {
+			// do nothing
+		}
+		freeCmdLines(p->cmd);
+		free(p);
+	}
 }
 
 process* process_create(cmdLine* cmd, pid_t pid) {
@@ -62,7 +93,7 @@ process* process_create(cmdLine* cmd, pid_t pid) {
 
 process** process_list_address_of_end(process **head) {
     process **current = head;
-    while (*current != NULL) {
+    while (*current) {
         current = &((*current)->next);
     }
     return current;
@@ -97,7 +128,11 @@ void updateProcessStatus(process* process_list, int pid, int status) {
 
 void update_process(process *p) {
 	int status;
-	int res = waitpid(p->pid, &status, WNOHANG | WUNTRACED | WEXITED | WCONTINUED);
+#ifdef WCONTINUED
+	int res = waitpid(p->pid, &status, WNOHANG | WUNTRACED | WCONTINUED);
+#else
+	int res = waitpid(p->pid, &status, WNOHANG | WUNTRACED);
+#endif
 	if (res < 0) {
 		if (DebugMode) {
 			perror("waitpid");
@@ -110,18 +145,28 @@ void update_process(process *p) {
 			p->status = TERMINATED;
 		} else if (WIFSTOPPED(status)) {
 			p->status = SUSPENDED;
-		} else if (WIFCONTINUED(status)) {
+		}
+	#ifdef WCONTINUED
+		else if (WIFCONTINUED(status)) {
 			p->status = RUNNING;
 		}
+	#endif
 	}
 }
 
 void updateProcessList(process **process_list) {
 	process *current = *process_list;
 	while (current) {
-		update_process(current);
+		if (current->status != TERMINATED) {
+			update_process(current);
+		}
+		
 		current = current->next;
 	}
+}
+
+void print_process_list_column_names() {
+	printf("%-12s %-12s %-12s\n", "PID", "STATUS", "Command");
 }
 
 void print_process(process *p) {
@@ -138,23 +183,40 @@ void print_process_list_core(process* process_list) {
 	}
 }
 
-void remove_terminated_processes(process *process_list) {
-	process **current = &process_list;
+void remove_terminated_processes(process **process_list) {
+	process **current = process_list;
 	while (*current) {
 		process *next = *current;
 		if (next->status == TERMINATED) {
 			*current = next->next;
 			freeProcess(next);
 		}
-		current = &((*current)->next);
+		else {
+			current = &((*current)->next);
+		}
 	}
 }
 
 void printProcessList(process** process_list) {
 	process *head = *process_list;
 	updateProcessList(process_list);
+	print_process_list_column_names();
 	print_process_list_core(head);
-	remove_terminated_processes(head);
+	remove_terminated_processes(process_list);
+}
+
+void remove_process_by_pid(process **process_list, pid_t pid) {
+	process **current = process_list;
+	while (*current) {
+		process *next = *current;
+		if (next->pid == pid) {
+			*current = next->next;
+			freeProcess(next);
+		}
+		else {
+			current = &((*current)->next);
+		}
+	}
 }
 
 #define LINE_MAX 2048
@@ -197,8 +259,7 @@ INP_LOOP print_process_list_cmd(cmdLine *pCmdLine, process **process_list) {
 	return INP_LOOP_CONTINUE;
 }
 
-bool send_signal_to_process(cmdLine *pCmdLine, process **process_list, int sig, int status) {
-	int err = 0;
+bool send_signal_to_process_cmd(cmdLine *pCmdLine, process **process_list, int sig, int status) {
 	pid_t pid = 0;
 	if (pCmdLine->argCount != 2) {
 		printf("%s: requires exactly 1 argument", cmd_get_path(pCmdLine));
@@ -209,38 +270,35 @@ bool send_signal_to_process(cmdLine *pCmdLine, process **process_list, int sig, 
 		return FALSE;
 	}
 	
-	err = kill(pid, sig);
-	if (err < 0) {
-		perror("kill");
+	if (!send_signal_to_process(pid, sig)) {
 		return FALSE;
 	}
-
 	updateProcessStatus(*process_list, pid, status);
 	return TRUE;
 }
 
 INP_LOOP suspend_cmd(cmdLine *pCmdLine, process **process_list) {
-	send_signal_to_process(pCmdLine, process_list, SIGTSTP, SUSPENDED);
+	send_signal_to_process_cmd(pCmdLine, process_list, SIGTSTP, SUSPENDED);
 	return INP_LOOP_CONTINUE;
 }
 
 INP_LOOP kill_cmd(cmdLine *pCmdLine, process **process_list) {
-	send_signal_to_process(pCmdLine, process_list, SIGINT, TERMINATED);
+	send_signal_to_process_cmd(pCmdLine, process_list, SIGINT, TERMINATED);
 	return INP_LOOP_CONTINUE;
 }
 
 INP_LOOP wake_cmd(cmdLine *pCmdLine, process **process_list) {
-	send_signal_to_process(pCmdLine, process_list, SIGCONT, RUNNING);
+	send_signal_to_process_cmd(pCmdLine, process_list, SIGCONT, RUNNING);
 	return INP_LOOP_CONTINUE;
 }
 
 predefined_cmd predefined_commands[] = {
-	{ "quit",		inp_loop_break },
-	{ "cd",			change_working_directory },
-	{ "procs",		print_process_list_cmd }
-	{ "suspend",	suspend_cmd },
-	{ "kill",		kill_cmd },
-	{ "wake",		wake_cmd }
+	{ "quit",		inp_loop_break, },
+	{ "cd",			change_working_directory, },
+	{ "procs",		print_process_list_cmd, },
+	{ "suspend",	suspend_cmd, },
+	{ "kill",		kill_cmd, },
+	{ "wake",		wake_cmd, },
 };
 
 predefined_cmd* find_predefined_cmd(char *cmd_name) {
@@ -267,11 +325,18 @@ void parent_post_exec(pid_t pid, cmdLine *pCmdLine, process **process_list) {
 		int status;
 		int res = waitpid(pid, &status, 0);
 		if (res < 0) {
-			perror("waitpid");
+			if (DebugMode) {
+				perror("waitpid");
+			}
+		}
+		else {
+			updateProcessStatus(*process_list, pid, TERMINATED);
 		}
 	}
 	else {
-		printf("pid: %d\n", pid);
+		if (!DebugMode) {
+			printf("pid: %d\n", pid);
+		}
 	}
 }
 
@@ -282,13 +347,24 @@ void execute(cmdLine *pCmdLine, process **process_list) {
 	}
 	
 	if (pid < 0) {
-		perror("fork");
+		if (DebugMode) {
+			perror("fork");
+		}
+		else {
+			printf("fork error, exiting...\n");
+		}
+		freeProcessList(*process_list);
 		exit(EXIT_FAILURE);
 	}
 	else if (pid == 0) {
 		// child, executes the command
 		execvp(cmd_get_path(pCmdLine), pCmdLine->arguments);
-		perror("execv");
+		if (DebugMode) {
+			perror("execv");
+		}
+		else {
+			printf("execv error, exiting...\n");
+		}
 		_exit(EXIT_FAILURE);
 	}
 	else {
@@ -338,7 +414,7 @@ void set_dbg_mode_from_args(int argc, char *argv[]) {
 
 int main(int argc, char *argv[]) {
 	INP_LOOP inp_loop = INP_LOOP_CONTINUE;
-	process **process_list = NULL;
+	process *process_list = NULL;
 	
 	set_dbg_mode_from_args(argc, argv);
 
@@ -353,7 +429,7 @@ int main(int argc, char *argv[]) {
 			continue;
 		}
 
-		inp_loop = do_cmd_from_input(buf, process_list);
+		inp_loop = do_cmd_from_input(buf, &process_list);
 	}
 	
 	freeProcessList(process_list);
