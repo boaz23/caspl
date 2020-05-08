@@ -192,6 +192,11 @@ INP_LOOP change_working_directory(cmdLine *pCmdLine, process **process_list) {
 	return INP_LOOP_CONTINUE;
 }
 
+INP_LOOP print_process_list_cmd(cmdLine *pCmdLine, process **process_list) {
+	printProcessList(process_list);
+	return INP_LOOP_CONTINUE;
+}
+
 bool send_signal_to_process(cmdLine *pCmdLine, process **process_list, int sig, int status) {
 	int err = 0;
 	pid_t pid = 0;
@@ -232,6 +237,7 @@ INP_LOOP wake_cmd(cmdLine *pCmdLine, process **process_list) {
 predefined_cmd predefined_commands[] = {
 	{ "quit",		inp_loop_break },
 	{ "cd",			change_working_directory },
+	{ "procs",		print_process_list_cmd }
 	{ "suspend",	suspend_cmd },
 	{ "kill",		kill_cmd },
 	{ "wake",		wake_cmd }
@@ -314,7 +320,7 @@ INP_LOOP do_cmd_from_input(char *buf, process **process_list) {
 	}
 	else {
 		inp_loop = do_cmd(pCmdLine, process_list);
-		freeCmdLines(pCmdLine);
+		// REMOVED descruction of the cmdLine object
 	}
 
 	return inp_loop;
@@ -335,7 +341,6 @@ int main(int argc, char *argv[]) {
 	process **process_list = NULL;
 	
 	set_dbg_mode_from_args(argc, argv);
-	printProcessList(NULL);
 
 	while (!inp_loop) {
 		char buf[LINE_MAX];
@@ -351,5 +356,6 @@ int main(int argc, char *argv[]) {
 		inp_loop = do_cmd_from_input(buf, process_list);
 	}
 	
+	freeProcessList(process_list);
 	return EXIT_SUCCESS;
 }
