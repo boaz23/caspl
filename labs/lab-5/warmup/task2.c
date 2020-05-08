@@ -154,8 +154,8 @@ void update_process(process *p) {
 	}
 }
 
-void updateProcessList(process **process_list) {
-	process *current = *process_list;
+void updateProcessList(process *process_list) {
+	process *current = process_list;
 	while (current) {
 		if (current->status != TERMINATED) {
 			update_process(current);
@@ -199,7 +199,7 @@ void remove_terminated_processes(process **process_list) {
 
 void printProcessList(process** process_list) {
 	process *head = *process_list;
-	updateProcessList(process_list);
+	updateProcessList(head);
 	print_process_list_column_names();
 	print_process_list_core(head);
 	remove_terminated_processes(process_list);
@@ -318,7 +318,7 @@ void dbg_print_exec_info(pid_t pid, cmdLine *pCmdLine) {
 	fprintf(dbg_out, "\n");
 }
 
-void parent_post_exec(pid_t pid, cmdLine *pCmdLine, process **process_list) {
+void parent_post_fork(pid_t pid, cmdLine *pCmdLine, process **process_list) {
 	addProcess(process_list, pCmdLine, pid);
 	if (pCmdLine->blocking) {
 		// wait for the process to finish
@@ -369,7 +369,7 @@ void execute(cmdLine *pCmdLine, process **process_list) {
 	}
 	else {
 		// parent, actual terminal
-		parent_post_exec(pid, pCmdLine, process_list);
+		parent_post_fork(pid, pCmdLine, process_list);
 	}
 }
 
