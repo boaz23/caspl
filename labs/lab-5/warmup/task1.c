@@ -37,14 +37,17 @@ INP_LOOP inp_loop_break(cmdLine *pCmdLine) {
 
 INP_LOOP change_working_directory(cmdLine *pCmdLine) {
     int err = 0;
-    if (pCmdLine->argCount != 2) {
-        printf("too many arguments for 'cd' command\n");
+    if (pCmdLine->argCount == 1) {
+        // do nothing
     }
-    else {
+    else if (pCmdLine->argCount == 2) {
         err = chdir(pCmdLine->arguments[1]);
         if (err < 0) {
-            fprintf(stderr, "error %d occurred when tried changing working directory\n", err);
+            perror("cd");
         }
+    }
+    else {
+        printf("too many arguments for 'cd' command\n");
     }
 
     return INP_LOOP_CONTINUE;

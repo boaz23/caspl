@@ -10,12 +10,12 @@ OBJ_DIR		:= bin
 LIST_DIR	:= bin
 BIN_DIR		:= bin
 
-PRG_NAME	:= main
-OBJECTS		:= $(OBJ_DIR)/main.o $(OBJ_DIR)/LineParser.o
+PRG_NAME	:= task1
+OBJECTS		:= $(OBJ_DIR)/task1.o $(OBJ_DIR)/LineParser.o
 
-all: main looper
+all: task1 looper
 
-main: $(OBJECTS)
+task1: $(OBJECTS)
 	$(CC) $(CC_FLAGS) -o $(BIN_DIR)/$(PRG_NAME) $(OBJECTS)
 
 looper: $(OBJ_DIR)/looper.o
@@ -30,4 +30,4 @@ $(OBJ_DIR)/%.o: $(SRC_DIR)/%.s
 
 .PHONY: clean
 clean:
-	rm -f $(BIN_DIR)/*.bin $(OBJ_DIR)/*.o $(LIST_DIR)/*.lst
+	rm -f $(PRG_NAME) looper $(OBJ_DIR)/*.o $(LIST_DIR)/*.lst
