@@ -2,8 +2,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
-#include <unistd.h>
 #include <sys/wait.h>
+#include <unistd.h>
 #include <signal.h>
 #include "linux/limits.h"
 #include "LineParser.h"
@@ -17,6 +17,19 @@ typedef enum bool {
 
 FILE *dbg_out	= NULL;
 bool DebugMode	= FALSE;
+
+#define LINE_MAX 2048
+
+typedef enum INP_LOOP {
+	INP_LOOP_CONTINUE    = 0,
+	INP_LOOP_BREAK       = 1,
+} INP_LOOP;
+
+typedef INP_LOOP (*predefined_cmd_handler)(cmdLine *pCmdLine, process **process_list);
+typedef struct predefined_cmd {
+	char *cmd_name;
+	predefined_cmd_handler handler;
+} predefined_cmd;
 
 bool dbg_print_error(char *err) {
 	if (DebugMode) {
@@ -94,6 +107,15 @@ void freeProcess(process *p) {
 	}
 }
 
+void freeProcessList(process *process_list) {
+	process *current = process_list;
+	while (current) {
+		process *next = current->next;
+		freeProcess(current);
+		current = next;
+	}
+}
+
 process* process_create(cmdLine* cmd, pid_t pid) {
     process *new_node = (process*)malloc(sizeof(process));
 	new_node->cmd = cmd;
@@ -117,12 +139,31 @@ void addProcess(process** process_list, cmdLine* cmd, pid_t pid) {
     *end = process_create(cmd, pid);
 }
 
-void freeProcessList(process *process_list) {
-	process *current = process_list;
-	while (current) {
-		process *next = current->next;
-		freeProcess(current);
-		current = next;
+void remove_terminated_processes(process **process_list) {
+	process **current = process_list;
+	while (*current) {
+		process *next = *current;
+		if (next->status == TERMINATED) {
+			*current = next->next;
+			freeProcess(next);
+		}
+		else {
+			current = &((*current)->next);
+		}
+	}
+}
+
+void remove_process_by_pid(process **process_list, pid_t pid) {
+	process **current = process_list;
+	while (*current) {
+		process *next = *current;
+		if (next->pid == pid) {
+			*current = next->next;
+			freeProcess(next);
+		}
+		else {
+			current = &((*current)->next);
+		}
 	}
 }
 
@@ -138,7 +179,7 @@ void updateProcessStatus(process* process_list, int pid, int status) {
 	}
 }
 
-void update_process_from_wait_status(process *p, int status) {
+void update_process_status_from_wait_status(process *p, int status) {
 	if (WIFEXITED(status)) {
 		p->status = TERMINATED;
 	} else if (WIFSIGNALED(status)) {
@@ -153,7 +194,7 @@ void update_process_from_wait_status(process *p, int status) {
 #endif
 }
 
-void update_process(process *p) {
+void check_process_state_and_update_status(process *p) {
 	int status;
 #ifdef WCONTINUED
 	int res = waitpid(p->pid, &status, WNOHANG | WUNTRACED | WCONTINUED);
@@ -164,7 +205,7 @@ void update_process(process *p) {
 		dbg_print_error("waitpid");
 	}
 	else if (res > 0) {
-		update_process_from_wait_status(p, status);
+		update_process_status_from_wait_status(p, status);
 	}
 }
 
@@ -172,7 +213,7 @@ void updateProcessList(process *process_list) {
 	process *current = process_list;
 	while (current) {
 		if (current->status != TERMINATED) {
-			update_process(current);
+			check_process_state_and_update_status(current);
 		}
 		
 		current = current->next;
@@ -197,20 +238,6 @@ void print_process_list_core(process* process_list) {
 	}
 }
 
-void remove_terminated_processes(process **process_list) {
-	process **current = process_list;
-	while (*current) {
-		process *next = *current;
-		if (next->status == TERMINATED) {
-			*current = next->next;
-			freeProcess(next);
-		}
-		else {
-			current = &((*current)->next);
-		}
-	}
-}
-
 void printProcessList(process** process_list) {
 	process *head = *process_list;
 	updateProcessList(head);
@@ -218,33 +245,6 @@ void printProcessList(process** process_list) {
 	print_process_list_core(head);
 	remove_terminated_processes(process_list);
 }
-
-void remove_process_by_pid(process **process_list, pid_t pid) {
-	process **current = process_list;
-	while (*current) {
-		process *next = *current;
-		if (next->pid == pid) {
-			*current = next->next;
-			freeProcess(next);
-		}
-		else {
-			current = &((*current)->next);
-		}
-	}
-}
-
-#define LINE_MAX 2048
-
-typedef enum INP_LOOP {
-	INP_LOOP_CONTINUE    = 0,
-	INP_LOOP_BREAK       = 1,
-} INP_LOOP;
-
-typedef INP_LOOP (*predefined_cmd_handler)(cmdLine *pCmdLine, process **process_list);
-typedef struct predefined_cmd {
-	char *cmd_name;
-	predefined_cmd_handler handler;
-} predefined_cmd;
 
 INP_LOOP inp_loop_break(cmdLine *pCmdLine, process **process_list) {
 	return INP_LOOP_BREAK;
@@ -326,12 +326,6 @@ predefined_cmd* find_predefined_cmd(char *cmd_name) {
 	return NULL;
 }
 
-void dbg_print_exec_info(pid_t pid, cmdLine *pCmdLine) {
-	fprintf(dbg_out, "pid: %d, exec cmd:", pid);
-	print_cmd(dbg_out, pCmdLine);
-	fprintf(dbg_out, "\n");
-}
-
 void parent_failed_fork(pid_t pid, cmdLine *pCmdLine, process **process_list) {
 	if (!dbg_print_error("fork")) {
 		printf("fork error, exiting...\n");
@@ -370,6 +364,12 @@ void parent_post_fork(pid_t pid, cmdLine *pCmdLine, process **process_list) {
 			printf("pid: %d\n", pid);
 		}
 	}
+}
+
+void dbg_print_exec_info(pid_t pid, cmdLine *pCmdLine) {
+	fprintf(dbg_out, "pid: %d, exec cmd:", pid);
+	print_cmd(dbg_out, pCmdLine);
+	fprintf(dbg_out, "\n");
 }
 
 void execute(cmdLine *pCmdLine, process **process_list) {

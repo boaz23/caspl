@@ -10,6 +10,7 @@
         "unistd.h": "c",
         "types.h": "c",
         "signal.h": "c",
-        "signal-defs.h": "c"
+        "signal-defs.h": "c",
+        "wait.h": "c"
     }
 }
