@@ -8,6 +8,8 @@
 #include "linux/limits.h"
 #include "LineParser.h"
 
+typedef struct process process;
+
 #define ARR_LEN(array) (sizeof((array)) / sizeof(*(array)))
 
 typedef enum bool {
