@@ -1,10 +1,12 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include <string.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
 #include <signal.h>
+#include <errno.h>
 #include "linux/limits.h"
 #include "LineParser.h"
 
@@ -31,9 +33,36 @@ typedef struct predefined_cmd {
     predefined_cmd_handler handler;
 } predefined_cmd;
 
-bool dbg_print_error(char *err) {
+void print_line_separator() {
+    printf("\n");
+}
+
+bool non_dbg_print(char const *s, ...) {
+    if (!DebugMode) {
+        va_list args;
+        va_start(args, s);
+        vfprintf(dbg_out, s, args);
+        va_end(args);
+        return TRUE;
+    }
+    
+    return FALSE;
+}
+
+bool dbg_print(char const *s, ...) {
     if (DebugMode) {
-        perror(err);
+        va_list args;
+        va_start(args, s);
+        vfprintf(dbg_out, s, args);
+        va_end(args);
+        return TRUE;
+    }
+    
+    return FALSE;
+}
+bool dbg_print_error(char const *err) {
+    if (DebugMode) {
+        fprintf(dbg_out, "%s: %s\n", err, strerror(errno));
         return TRUE;
     }
 
@@ -62,7 +91,9 @@ INP_LOOP change_working_directory(cmdLine *pCmdLine) {
     else if (pCmdLine->argCount == 2) {
         err = chdir(pCmdLine->arguments[1]);
         if (err < 0) {
-            perror("cd");
+            if (!dbg_print_error("cd")) {
+                perror("cd");
+            }
         }
     }
     else {
@@ -92,7 +123,8 @@ void parent_failed_fork(pid_t pid, cmdLine *pCmdLine) {
     if (!dbg_print_error("fork")) {
         printf("fork error, exiting...\n");
     }
-    // FREE process list here
+    freeCmdLines(pCmdLine);
+    // FREE processes list
     exit(EXIT_FAILURE);
 }
 
@@ -108,29 +140,32 @@ void wait_for_child(pid_t pid) {
     int status;
     int err = waitpid(pid, &status, 0);
     if (err < 0) {
-        perror("waitpid");
+        if (errno == ECHILD) {
+            // for some reason, child is not waitable
+        }
+        else {
+            dbg_print_error("waitpid");
+        }
     }
     else {
-        // child terminated
+        // child terminated, updating it's status to terminated will be checked by another function
     }
 }
 
 void parent_post_fork(pid_t pid, cmdLine *pCmdLine) {
-    // ADD process here
+    // ADD process to list
     if (pCmdLine->blocking) {
         wait_for_child(pid);
     }
     else {
-        if (!DebugMode) {
-            printf("pid: %d\n", pid);
-        }
+        non_dbg_print("pid: %d\n", pid);
     }
 }
 
 void dbg_print_exec_info(pid_t pid, cmdLine *pCmdLine) {
-    fprintf(dbg_out, "pid: %d, exec cmd:", pid);
+    dbg_print("pid: %d, exec cmd:", pid);
     print_cmd(dbg_out, pCmdLine);
-    fprintf(dbg_out, "\n");
+    dbg_print("\n");
 }
 
 void execute(cmdLine *pCmdLine) {
@@ -158,6 +193,7 @@ INP_LOOP do_cmd(cmdLine *pCmdLine) {
     predefined_cmd *predef_cmd = find_predefined_cmd(cmd_get_path(pCmdLine));
     if (predef_cmd) {
         inp_loop = predef_cmd->handler(pCmdLine);
+        // FREE cmdLine object
     }
     else {
         execute(pCmdLine);
@@ -192,7 +228,7 @@ void do_input_loop() {
             break;
         }
         if (res_input == NULL) {
-            printf("error inputing line");
+            printf("error inputing line\n");
             continue;
         }
 
@@ -213,6 +249,6 @@ void set_dbg_mode_from_args(int argc, char *argv[]) {
 int main(int argc, char *argv[]) {
     set_dbg_mode_from_args(argc, argv);
     do_input_loop();
-    // FREE process list
+    // FREE processes list
     return EXIT_SUCCESS;
 }

@@ -523,7 +523,6 @@ INP_LOOP do_cmd_from_input(char *buf, process **process_list) {
     pCmdLine = parseCmdLines(buf);
     if (pCmdLine == NULL) {
         printf("error parsing the command\n");
-        freeCmdLines(pCmdLine);
     }
     else {
         inp_loop = do_cmd(pCmdLine, process_list);
