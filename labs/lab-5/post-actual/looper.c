@@ -2,12 +2,22 @@
 #include <unistd.h>
 #include <signal.h>
 #include <string.h>
+#include <stdarg.h>
 
 typedef __sighandler_t sighandler;
 void signal_printer_stp(int sig);
 
+void looper_print(char const *s, ...) {
+	va_list args;
+	va_start(args, s);
+	printf("LOOPER %d: ", getpid());
+	vprintf(s, args);
+	printf("\n");
+	va_end(args);
+}
+
 void signal_printer(int sig, int sig_renew, sighandler handler) {
-	printf("LOOPER: %s received\n", strsignal(sig));
+	looper_print("%s received", strsignal(sig));
 	signal(sig, SIG_DFL);
 	if (handler) {
 		signal(sig_renew, handler);
@@ -27,8 +37,8 @@ void signal_printer_stp(int sig) {
 	signal_printer(sig, SIGCONT, signal_printer_cont);
 }
 
-int main(int argc, char **argv) { 
-	printf("Starting the program\n");
+int main(int argc, char **argv) {
+	looper_print("Starting the program");
 
 	signal(SIGINT, signal_printer_int);
 	signal(SIGTSTP, signal_printer_stp);

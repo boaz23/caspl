@@ -43,7 +43,7 @@ bool non_dbg_print(char const *s, ...) {
     if (!DebugMode) {
         va_list args;
         va_start(args, s);
-        fprintf(dbg_out, s, args);
+        vfprintf(dbg_out, s, args);
         va_end(args);
         return TRUE;
     }
@@ -55,7 +55,7 @@ bool dbg_print(char const *s, ...) {
     if (DebugMode) {
         va_list args;
         va_start(args, s);
-        fprintf(dbg_out, s, args);
+        vfprintf(dbg_out, s, args);
         va_end(args);
         return TRUE;
     }
@@ -244,14 +244,38 @@ void addProcess(process** process_list, cmdLine* cmd, pid_t pid) {
     *process_list = process_create(pid, cmd, RUNNING, *process_list);
 }
 
-process *find_process_by_pid(process* process_list, int pid) {
-    for (process *current = process_list; current; current = current->next) {
+process** addr_of_process_by_pid(process** process_list, int pid) {
+    process *current = NULL;
+    process **p_current = process_list;
+    while ((current = *p_current)) {
         if (current->pid == pid) {
-            return current;
+            return p_current;
         }
+
+        p_current = &(current->next);
     }
 
     return NULL;
+}
+
+process* find_process_by_pid(process* process_list, int pid) {
+    process **p_p = addr_of_process_by_pid(&process_list, pid);
+    if (p_p) {
+        return *p_p;
+    }
+
+    return NULL;
+}
+
+void remove_process(process **p_p) {
+    process *p = *p_p;
+    *p_p = p->next;
+    freeProcess(p);
+}
+
+void remove_process_by_pid(process** process_list, pid_t pid) {
+    process **p_p = addr_of_process_by_pid(process_list, pid);
+    remove_process(p_p);
 }
 
 void updateProcessStatus(process* process_list, int pid, int status) {
@@ -266,8 +290,7 @@ void remove_terminated_process(process **process_list) {
     process **p_current = process_list;
     while ((current = *p_current)) {
         if (current->status == TERMINATED) {
-            *p_current = current->next;
-            freeProcess(current);
+            remove_process(p_current);
         }
         else {
             p_current = &(current->next);
@@ -431,10 +454,15 @@ void wait_for_child(pid_t pid, process **process_list) {
     int status;
     int err = waitpid(pid, &status, 0);
     if (err < 0) {
-        dbg_print_error("waitpid");
+        if (errno == ECHILD) {
+            remove_process_by_pid(process_list, pid);
+        }
+        else {
+            dbg_print_error("waitpid");
+        }
     }
     else {
-        // child terminated
+        // child terminated, updating it's status to terminated will be checked by another function
     }
 }
 
