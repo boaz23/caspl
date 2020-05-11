@@ -187,8 +187,8 @@ bool check_process_state_and_update_status(process *p) {
                 return TRUE;
             
             case NO_CHILD:
-                p->status = TERMINATED;
-                return TRUE;
+                dbg_print("Tried to wait a non-existing child\n");
+                return FALSE;
 
             default:
                 p->status = status;
@@ -273,8 +273,8 @@ void remove_process(process **p_p) {
     freeProcess(p);
 }
 
-void remove_process_by_pid(process** process_list, pid_t pid) {
-    process **p_p = addr_of_process_by_pid(process_list, pid);
+void remove_process_by_pid(process* process_list, pid_t pid) {
+    process **p_p = addr_of_process_by_pid(&process_list, pid);
     remove_process(p_p);
 }
 
@@ -455,14 +455,15 @@ void wait_for_child(pid_t pid, process **process_list) {
     int err = waitpid(pid, &status, 0);
     if (err < 0) {
         if (errno == ECHILD) {
-            remove_process_by_pid(process_list, pid);
+            remove_process_by_pid(*process_list, pid);
         }
         else {
             dbg_print_error("waitpid");
         }
     }
     else {
-        // child terminated, updating it's status to terminated will be checked by another function
+        // child terminated
+        updateProcessStatus(*process_list, pid, TERMINATED);
     }
 }
 
