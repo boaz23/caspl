@@ -39,7 +39,7 @@ void print_line_separator() {
     printf("\n");
 }
 
-bool non_dbg_print(bool shouldPrint, char const *s, ...) {
+bool non_dbg_print(char const *s, ...) {
     if (!DebugMode) {
         va_list args;
         va_start(args, s);
