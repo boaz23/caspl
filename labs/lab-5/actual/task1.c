@@ -104,11 +104,26 @@ void child_do_exec(cmdLine *pCmdLine) {
     _exit(EXIT_FAILURE);
 }
 
+void wait_for_child(pid_t pid) {
+    int status;
+    int err = waitpid(pid, &status, 0);
+    if (err < 0) {
+        perror("waitpid");
+    }
+    else {
+        // child terminated
+    }
+}
+
 void parent_post_fork(pid_t pid, cmdLine *pCmdLine) {
     // ADD process here
-    // CHECK for blocking or not
-    if (!DebugMode) {
-        printf("pid: %d\n", pid);
+    if (pCmdLine->blocking) {
+        wait_for_child(pid);
+    }
+    else {
+        if (!DebugMode) {
+            printf("pid: %d\n", pid);
+        }
     }
 }
 

@@ -7,7 +7,7 @@ typedef __sighandler_t sighandler;
 void signal_printer_stp(int sig);
 
 void signal_printer(int sig, int sig_renew, sighandler handler) {
-	printf("%s received\n", strsignal(sig));
+	printf("LOOPER: %s received\n", strsignal(sig));
 	signal(sig, SIG_DFL);
 	if (handler) {
 		signal(sig_renew, handler);
