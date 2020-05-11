@@ -1,5 +1,17 @@
 {
     "files.associations": {
-        "lineparser.h": "c"
+        "lineparser.h": "c",
+        "errno.h": "c",
+        "errno-base.h": "c",
+        "err.h": "c",
+        "features.h": "c",
+        "stdarg.h": "c",
+        "error.h": "c",
+        "wait.h": "c",
+        "array": "c",
+        "unistd.h": "c",
+        "waitflags.h": "c",
+        "signal.h": "c",
+        "stdio.h": "c"
     }
 }
