@@ -11,7 +11,7 @@ LIST_DIR	:= .
 BIN_DIR		:= .
 
 PRG_NAME	:= mypipe
-OBJECTS		:= $(OBJ_DIR)/$(PRG_NAME).o $(OBJ_DIR)/LineParser.o
+OBJECTS		:= $(OBJ_DIR)/$(PRG_NAME).o
 
 $(PRG_NAME): $(OBJECTS)
 	$(CC) $(CC_FLAGS) -o $(BIN_DIR)/$(PRG_NAME) $(OBJECTS)
