@@ -50,7 +50,7 @@ pid_t fork_wrapper() {
     dbg_print("(parent_process>forking...)\n");
     pid = fork();
     if (pid > 0) {
-        dbg_print("(parent_process>created process with id: )\n", pid);
+        dbg_print("(parent_process>created process with id: %d)\n", pid);
     }
     return pid;
 }
