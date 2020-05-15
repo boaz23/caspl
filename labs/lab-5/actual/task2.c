@@ -157,11 +157,6 @@ bool terminateProcess(process *p) {
         check_process_state_and_update_status(p);
         return terminate_process_from_pid_and_status(p->pid, p->status);
     }
-    else {
-        if (DebugMode) {
-            fprintf(dbg_out, "DEBUG: tried terminating a NULL process\n");
-        }
-    }
 
     return FALSE;
 }
@@ -171,11 +166,6 @@ void freeProcess(process *p) {
         terminateProcess(p);
         freeCmdLines(p->cmd);
         free(p);
-    }
-    else {
-        if (DebugMode) {
-            fprintf(dbg_out, "DEBUG: tried freeing a NULL process\n");
-        }
     }
 }
 
@@ -260,7 +250,6 @@ void print_process_list_core(process *process_list) {
     for (process *current = process_list; current; current = current->next) {
         print_process_info(current);
     }
-    printf("\n");
 }
 
 void printProcessList(process** process_list) {
@@ -367,7 +356,6 @@ void parent_failed_fork(pid_t pid, cmdLine *pCmdLine, process **process_list) {
     if (!dbg_print_error("fork")) {
         printf("fork error, exiting...\n");
     }
-    freeCmdLines(pCmdLine);
     freeProcessList(*process_list);
     exit(EXIT_FAILURE);
 }
@@ -435,7 +423,6 @@ INP_LOOP do_cmd(cmdLine *pCmdLine, process **process_list) {
     predefined_cmd *predef_cmd = find_predefined_cmd(cmd_get_path(pCmdLine));
     if (predef_cmd) {
         inp_loop = predef_cmd->handler(pCmdLine, process_list);
-        freeCmdLines(pCmdLine);
     }
     else {
         execute(pCmdLine, process_list);
@@ -451,7 +438,6 @@ INP_LOOP do_cmd_from_input(char *buf, process **process_list) {
     pCmdLine = parseCmdLines(buf);
     if (pCmdLine == NULL) {
         printf("error parsing the command\n");
-        freeCmdLines(pCmdLine);
     }
     else {
         inp_loop = do_cmd(pCmdLine, process_list);
