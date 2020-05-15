@@ -347,6 +347,9 @@ void expand_variables(cmdLine *pCmdLine, var_link **var_list) {
         if (var) {
             replaceCmdArg(pCmdLine, i, var->value);
         }
+        else if (pCmdLine->arguments[i][0] == '$') {
+            dbg_print("tried expanding undefined variable '%s'\n", pCmdLine->arguments[i] + 1);
+        }
     }
 }
 
