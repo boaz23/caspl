@@ -1,0 +1,14 @@
+{
+    "files.associations": {
+        "*.tcc": "c",
+        "numeric": "c",
+        "fstream": "c",
+        "iostream": "c",
+        "istream": "c",
+        "ostream": "c",
+        "system_error": "c",
+        "typeindex": "c",
+        "typeinfo": "c",
+        "type_traits": "c"
+    }
+}
