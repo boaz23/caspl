@@ -128,10 +128,33 @@ void parent_failed_fork(pid_t pid, cmdLine *pCmdLine) {
     exit(EXIT_FAILURE);
 }
 
+bool redirect_io(cmdLine *pCmdLine) {
+    if (pCmdLine->inputRedirect) {
+        if (close(STDIN_FILENO) < 0 ||
+            !fopen(pCmdLine->inputRedirect, "r"))
+        {
+            printf("input redirection failed.\n");
+            return FALSE;
+        }
+    }
+    if (pCmdLine->outputRedirect) {
+        if (close(STDOUT_FILENO) < 0 ||
+            !fopen(pCmdLine->outputRedirect, "w"))
+        {
+            printf("input redirection failed.\n");
+            return FALSE;
+        }
+    }
+
+    return TRUE;
+}
+
 void child_do_exec(cmdLine *pCmdLine) {
-    execvp(cmd_get_path(pCmdLine), pCmdLine->arguments);
-    if (!dbg_print_error("execv")) {
-        printf("execv error, exiting...\n");
+    if (redirect_io(pCmdLine)) {
+        execvp(cmd_get_path(pCmdLine), pCmdLine->arguments);
+        if (!dbg_print_error("execv")) {
+            printf("execv error, exiting...\n");
+        }
     }
     _exit(EXIT_FAILURE);
 }
