@@ -280,18 +280,22 @@ predefined_cmd* find_predefined_cmd(char *cmd_name) {
     return NULL;
 }
 
-void parent_close(int fd) {
-    if (close(fd) < 0) {
-        dbg_print_error("close");
-        exit(EXIT_FAILURE);
+bool parent_close(int fd) {
+    if (close(fd) < 0 && !dbg_print_error("close")) {
+        printf("an error has occurred\n");
+        return FALSE;
     }
+
+    return TRUE;
 }
 
-void parent_pipe(int pipefd[2]) {
-    if (pipe(pipefd) < 0) {
-        dbg_print_error("pipe");
-        exit(EXIT_FAILURE);
+bool parent_pipe(int pipefd[2]) {
+    if (pipe(pipefd) < 0 && !dbg_print_error("pipe")) {
+        printf("an error has occurred\n");
+        return FALSE;
     }
+
+    return TRUE;
 }
 
 void child_dup(int fd) {
@@ -336,7 +340,7 @@ void child_redirect_output_to_file(char const *file_name) {
     }
 }
 
-void parent_failed_fork(cmdLine *pCmdLine, var_link **var_list) {
+void parent_fork_failed(cmdLine *pCmdLine, var_link **var_list) {
     if (!dbg_print_error("fork")) {
         printf("fork error, exiting...\n");
     }
@@ -358,22 +362,26 @@ void child_exec(cmdLine *pCmdLine) {
     _exit(EXIT_FAILURE);
 }
 
-void wait_for_child(pid_t pid) {
+bool wait_for_child(pid_t pid) {
     int status;
     int err = waitpid(pid, &status, 0);
     if (err < 0) {
         dbg_print_error("waitpid");
+        return FALSE;
     }
     else {
-        // child terminated, updating it's status to terminated will be checked by another function
+        // child terminated
+        return TRUE;
     }
 }
 
-void wait_for_child_if_not_blocking(pid_t pid, cmdLine *pCmdLine) {
+bool wait_for_child_if_blocking(pid_t pid, cmdLine *pCmdLine) {
     // ADD process to list
     if (pCmdLine->blocking) {
-        wait_for_child(pid);
+        return wait_for_child(pid);
     }
+    
+    return TRUE;
 }
 
 bool dbg_print_exec_info(pid_t pid, cmdLine *pCmdLine) {
@@ -399,7 +407,7 @@ void execute_single(cmdLine *pCmdLine, var_link **var_list) {
     pid_t pid = fork_with_print(pCmdLine);
     if (pid < 0) {
         // fork failed
-        parent_failed_fork(pCmdLine, var_list);
+        parent_fork_failed(pCmdLine, var_list);
     }
     else if (pid == 0) {
         // child, executes the command
@@ -408,17 +416,8 @@ void execute_single(cmdLine *pCmdLine, var_link **var_list) {
     }
     else {
         // parent, actual terminal
-        wait_for_child_if_not_blocking(pid, pCmdLine);
+        wait_for_child_if_blocking(pid, pCmdLine);
     }
-}
-
-int cmd_line_processes_to_wait_amount(cmdLine *last) {
-    int length = last->idx;
-    if (!last->blocking) {
-        ++length;
-    }
-
-    return length;
 }
 
 int cmd_line_list_length(cmdLine *last) {
@@ -453,7 +452,9 @@ void execute_pipeline(cmdLine *pCmdLine, var_link **var_list) {
         return;
     }
 
-    parent_pipe(pipefd);
+    if (!parent_pipe(pipefd)) {
+        return;
+    }
     pipe_fd_read = pipefd[0];
     pipe_fd_write = pipefd[1];
 
@@ -461,7 +462,7 @@ void execute_pipeline(cmdLine *pCmdLine, var_link **var_list) {
     if (pid < 0) {
         // fork failed
         // NOTE: we probably should kill all created child process, but ehh...
-        parent_failed_fork(pCmdLine, var_list);
+        parent_fork_failed(pCmdLine, var_list);
     }
     else if (pid == 0) {
         // child, executes the command
@@ -469,13 +470,15 @@ void execute_pipeline(cmdLine *pCmdLine, var_link **var_list) {
         child_exec(pCmdLine);
     }
     else {
-        parent_close(pipe_fd_write);
+        if (!parent_close(pipe_fd_write)) {
+            return;
+        }
 
         pid2 = fork_with_print(cmd_next);
         if (pid2 < 0) {
             // fork failed
             // NOTE: we probably should kill all created child process, but ehh...
-            parent_failed_fork(cmd_next, var_list);
+            parent_fork_failed(cmd_next, var_list);
         }
         else if (pid2 == 0) {
             child_read_handle_pipeline_files(pipe_fd_read);
@@ -484,76 +487,9 @@ void execute_pipeline(cmdLine *pCmdLine, var_link **var_list) {
         else {
             parent_close(pipe_fd_read);
             wait_for_child(pid);
-            wait_for_child_if_not_blocking(pid2, pCmdLine);
+            wait_for_child_if_blocking(pid2, pCmdLine);
         }
     }
-
-    // int wait_processes_amount = cmd_line_processes_to_wait_amount(last_cmd);
-    // pid_t* wait_process_arr = (pid_t*)calloc(wait_processes_amount, sizeof(pid_t));
-    // int wait_process_arr_last_index = -1;
-
-    // pid_t pid = 0;
-    
-    // int pipefd_left[2], pipefd_left_read, pipefd_left_write;
-    // int pipefd_right[2], pipefd_right_read, pipefd_right_write;
-    // cmdLine **cmd_prev = NULL, **cmd_next = NULL;
-    // int err = 0;
-
-    // err = pipe(pipefd_left);
-    // if (err < 0) {
-    //     dbg_print_error("pipe");
-    //     exit(EXIT_FAILURE);
-    // }
-    
-    // cmd_prev = NULL;
-    // pipefd_left_read = pipefd_left[0];
-    // pipefd_left_write = pipefd_left[1];
-    // pid = fork_with_print(cmd_prev);
-    // if (pid < 0) {
-    //     // fork failed
-    //     // NOTE: we probably should kill all created child process, but ehh...
-    //     parent_failed_fork(cmd_prev, var_list);
-    // }
-    // else if (pid == 0) {
-    //     // child, executes the command
-    //     child_write_handle_pipeline_files(pipefd_left_write, pipefd_left_read);
-    //     child_exec(cmd_prev);
-    // }
-    // else {
-    //     // parent, actual terminal
-    //     wait_process_arr[++wait_process_arr_last_index] = pid;
-    //     parent_close(pipefd_left_write);
-        
-    //     while (cmd_current->next) {
-            
-    //         cmd_current = cmd_current->next;
-    //     }
-
-    //     pid = fork();
-    //     dbg_print_exec_info(pid, pCmdLine);
-    //     if (pid < 0) {
-    //         // fork failed
-    //         // NOTE: we probably should kill all created child process, but ehh...
-    //         parent_failed_fork(pCmdLine, var_list);
-    //     }
-    //     else if (pid == 0) {
-    //         // child executes the command
-    //         child_read_handle_pipeline_files(pipefd_left_read);
-    //         child_exec(cmd_current);
-    //     }
-    //     else {
-    //         // parent, actual terminal
-    //         if (cmd_current->blocking) {
-    //             wait_process_arr[++wait_process_arr_last_index] = pid;
-    //         }
-
-    //         parent_close(pipefd_left_read);
-    //         for (int i = 0; i < wait_processes_amount; ++i) {
-    //             wait_for_child(wait_process_arr[i]);
-    //         }
-    //         free(wait_process_arr);
-    //     }
-    // }
 }
 
 bool cmd_line_has_pipe(cmdLine *pCmdLine) {
