@@ -130,14 +130,13 @@ void print_cmd(FILE *file, cmdLine *pCmdLine) {
 }
 
 cmdLine* cmd_line_list_last(cmdLine *pCmdLine) {
-    if (!pCmdLine) {
-        return NULL;
+    cmdLine *current = pCmdLine;
+    if (current) {
+        while (current->next) {
+            current = current->next;
+        }
     }
     
-    cmdLine *current = pCmdLine;
-    while (current->next) {
-        current = current->next;
-    }
     return current;
 }
 
