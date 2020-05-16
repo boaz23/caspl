@@ -119,101 +119,129 @@ predefined_cmd* find_predefined_cmd(char *cmd_name) {
     return NULL;
 }
 
-void parent_failed_fork(pid_t pid, cmdLine *pCmdLine) {
+void child_close_file(int fd) {
+    if (close(fd) < 0) {
+        dbg_print_error("close");
+        _exit(EXIT_FAILURE);
+    }
+}
+
+void child_open_read_file(char const *file_name) {
+    if (fopen(file_name, "r") < 0) {
+        dbg_print_error("fopen");
+        _exit(EXIT_FAILURE);
+    }
+}
+
+void child_open_write_file(char const *file_name) {
+    if (fopen(file_name, "w") < 0) {
+        dbg_print_error("fopen");
+        _exit(EXIT_FAILURE);
+    }
+}
+
+void child_redirect_input_from_file(char const *file_name) {
+    if (file_name) {
+        child_close_file(STDIN_FILENO);
+        child_open_read_file(file_name);
+    }
+}
+
+void child_redirect_output_to_file(char const *file_name) {
+    if (file_name) {
+        child_close_file(STDOUT_FILENO);
+        child_open_write_file(file_name);
+    }
+}
+
+void child_redirect_io_to_files(cmdLine *pCmdLine) {
+    child_redirect_input_from_file(pCmdLine->inputRedirect);
+    child_redirect_output_to_file(pCmdLine->outputRedirect);
+}
+
+void parent_fork_failed(cmdLine *pCmdLine) {
     if (!dbg_print_error("fork")) {
         printf("fork error, exiting...\n");
     }
     freeCmdLines(pCmdLine);
-    // FREE list
+    // FREE vars list
     exit(EXIT_FAILURE);
 }
 
-bool redirect_io(cmdLine *pCmdLine) {
-    if (pCmdLine->inputRedirect) {
-        if (close(STDIN_FILENO) < 0 ||
-            !fopen(pCmdLine->inputRedirect, "r"))
-        {
-            printf("input redirection failed.\n");
-            return FALSE;
-        }
-    }
-    if (pCmdLine->outputRedirect) {
-        if (close(STDOUT_FILENO) < 0 ||
-            !fopen(pCmdLine->outputRedirect, "w"))
-        {
-            printf("input redirection failed.\n");
-            return FALSE;
-        }
-    }
-
-    return TRUE;
-}
-
-void child_do_exec(cmdLine *pCmdLine) {
-    if (redirect_io(pCmdLine)) {
-        execvp(cmd_get_path(pCmdLine), pCmdLine->arguments);
-        if (!dbg_print_error("execv")) {
-            printf("execv error, exiting...\n");
-        }
+void child_exec(cmdLine *pCmdLine) {
+    execvp(cmd_get_path(pCmdLine), pCmdLine->arguments);
+    if (!dbg_print_error("execv")) {
+        printf("execv error, exiting...\n");
     }
     _exit(EXIT_FAILURE);
 }
 
-void wait_for_child(pid_t pid) {
+bool wait_for_child(pid_t pid) {
     int status;
     int err = waitpid(pid, &status, 0);
     if (err < 0) {
-        if (errno == ECHILD) {
-            // for some reason, child is not waitable
-        }
-        else {
-            dbg_print_error("waitpid");
-        }
+        dbg_print_error("waitpid");
+        return FALSE;
     }
     else {
-        // child terminated, updating it's status to terminated will be checked by another function
+        // child terminated
+        return TRUE;
     }
 }
 
-void parent_post_fork(pid_t pid, cmdLine *pCmdLine) {
+bool wait_for_child_if_blocking(pid_t pid, cmdLine *pCmdLine) {
     // ADD process to list
     if (pCmdLine->blocking) {
-        wait_for_child(pid);
-    }
-    else {
-        non_dbg_print("pid: %d\n", pid);
-    }
-}
-
-void dbg_print_exec_info(pid_t pid, cmdLine *pCmdLine) {
-    dbg_print("pid: %d, exec cmd:", pid);
-    print_cmd(dbg_out, pCmdLine);
-    dbg_print("\n");
-}
-
-void execute(cmdLine *pCmdLine) {
-    pid_t pid = fork();
-    if (pid != 0 && DebugMode) {
-        dbg_print_exec_info(pid, pCmdLine);
+        return wait_for_child(pid);
     }
     
+    return TRUE;
+}
+
+bool dbg_print_exec_info(pid_t pid, cmdLine *pCmdLine) {
+    if (DebugMode) {
+        dbg_print("pid: %d, exec cmd:", pid);
+        print_cmd(dbg_out, pCmdLine);
+        dbg_print("\n");
+        return TRUE;
+    }
+
+    return FALSE;
+}
+
+pid_t fork_with_print(cmdLine *pCmdLine) {
+    pid_t pid = fork();
+    if (pid > 0 && !dbg_print_exec_info(pid, pCmdLine) && !pCmdLine->blocking) {
+        non_dbg_print("pid: %d\n", pid);
+    }
+    return pid;
+}
+
+void execute_single(cmdLine *pCmdLine) {
+    pid_t pid = fork_with_print(pCmdLine);
     if (pid < 0) {
         // fork failed
-        parent_failed_fork(pid, pCmdLine);
+        parent_fork_failed(pCmdLine);
     }
     else if (pid == 0) {
         // child, executes the command
-        child_do_exec(pCmdLine);
+        child_redirect_io_to_files(pCmdLine);
+        child_exec(pCmdLine);
     }
     else {
         // parent, actual terminal
-        parent_post_fork(pid, pCmdLine);
+        wait_for_child_if_blocking(pid, pCmdLine);
     }
+}
+
+void execute(cmdLine *pCmdLine) {
+    execute_single(pCmdLine);
 }
 
 INP_LOOP do_cmd(cmdLine *pCmdLine) {
     INP_LOOP inp_loop = INP_LOOP_CONTINUE;
     predefined_cmd *predef_cmd = find_predefined_cmd(cmd_get_path(pCmdLine));
+    // EXPAND variables
     if (predef_cmd) {
         inp_loop = predef_cmd->handler(pCmdLine);
     }
@@ -268,8 +296,9 @@ void set_dbg_mode_from_args(int argc, char *argv[]) {
 }
 
 int main(int argc, char *argv[]) {
+    // DEFINE vars list
     set_dbg_mode_from_args(argc, argv);
     do_input_loop();
-    // FREE list
+    // FREE vars list
     return EXIT_SUCCESS;
 }
