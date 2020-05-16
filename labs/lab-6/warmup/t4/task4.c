@@ -205,16 +205,9 @@ bool set_var(var_link **var_list, char *expand_name, char *value) {
     }
 }
 
-void set_var_wrapper(cmdLine *pCmdLine, var_link **var_list) {
-    char *expand_name = NULL;
-    char *value = NULL;
-    if (pCmdLine->argCount < 3) {
-        printf("set: expected at least 2 arguments\n");
-        return;
-    }
-
-    expand_name = get_expand_var_name(pCmdLine->arguments[1]);
-    value = str_arr_join(pCmdLine->argCount - 2, pCmdLine->arguments + 2, " ");
+void set_var_wrapper(char *name, int value_count, char *values[], var_link **var_list) {
+    char *expand_name = get_expand_var_name(name);
+    char *value = str_arr_join(value_count, values, " ");
     if (!set_var(var_list, expand_name, value)) {
         free(expand_name);
     }
@@ -229,7 +222,17 @@ void print_vars(var_link *var_list) {
 }
 
 INP_LOOP set_var_cmd(cmdLine *pCmdLine, var_link **var_list) {
-    set_var_wrapper(pCmdLine, var_list);
+    if (pCmdLine->argCount < 3) {
+        printf("set: expected at least 2 arguments\n");
+        return;
+    }
+
+    set_var_wrapper(
+        pCmdLine->arguments[1],
+        pCmdLine->argCount - 2,
+        pCmdLine->arguments + 2,
+        var_list
+    );
     return INP_LOOP_CONTINUE;
 }
 
@@ -340,6 +343,11 @@ void child_redirect_output_to_file(char const *file_name) {
     }
 }
 
+void child_redirect_io_to_files(cmdLine *pCmdLine) {
+    child_redirect_input_from_file(pCmdLine->inputRedirect);
+    child_redirect_output_to_file(pCmdLine->outputRedirect);
+}
+
 void parent_fork_failed(cmdLine *pCmdLine, var_link **var_list) {
     if (!dbg_print_error("fork")) {
         printf("fork error, exiting...\n");
@@ -347,11 +355,6 @@ void parent_fork_failed(cmdLine *pCmdLine, var_link **var_list) {
     freeCmdLines(pCmdLine);
     free_var_list(*var_list);
     exit(EXIT_FAILURE);
-}
-
-void child_redirect_io_to_files(cmdLine *pCmdLine) {
-    child_redirect_input_from_file(pCmdLine->inputRedirect);
-    child_redirect_output_to_file(pCmdLine->outputRedirect);
 }
 
 void child_exec(cmdLine *pCmdLine) {
