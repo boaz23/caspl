@@ -1,0 +1,304 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdarg.h>
+#include <string.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <unistd.h>
+#include <signal.h>
+#include <errno.h>
+#include "linux/limits.h"
+#include "LineParser.h"
+
+#define ARR_LEN(array) (sizeof((array)) / sizeof(*(array)))
+
+typedef enum bool {
+    FALSE   = 0,
+    TRUE    = 1,
+} bool;
+
+FILE *dbg_out	= NULL;
+bool DebugMode	= FALSE;
+
+#define LINE_MAX 2048
+
+typedef enum INP_LOOP {
+    INP_LOOP_CONTINUE    = 0,
+    INP_LOOP_BREAK       = 1,
+} INP_LOOP;
+
+typedef INP_LOOP (*predefined_cmd_handler)(cmdLine *pCmdLine);
+typedef struct predefined_cmd {
+    char *cmd_name;
+    predefined_cmd_handler handler;
+} predefined_cmd;
+
+void print_line_separator() {
+    printf("\n");
+}
+
+bool non_dbg_print(char const *s, ...) {
+    if (!DebugMode) {
+        va_list args;
+        va_start(args, s);
+        vfprintf(dbg_out, s, args);
+        va_end(args);
+        return TRUE;
+    }
+    
+    return FALSE;
+}
+
+bool dbg_print(char const *s, ...) {
+    if (DebugMode) {
+        va_list args;
+        va_start(args, s);
+        vfprintf(dbg_out, s, args);
+        va_end(args);
+        return TRUE;
+    }
+    
+    return FALSE;
+}
+bool dbg_print_error(char const *err) {
+    if (DebugMode) {
+        fprintf(dbg_out, "%s: %s\n", err, strerror(errno));
+        return TRUE;
+    }
+
+    return FALSE;
+}
+
+char* cmd_get_path(cmdLine *pCmdLine) {
+    return pCmdLine->arguments[0];
+}
+
+void print_cmd(FILE *file, cmdLine *pCmdLine) {
+    for (int i = 0; i < pCmdLine->argCount; ++i) {
+        fprintf(file, " %s", pCmdLine->arguments[i]);
+    }
+}
+
+INP_LOOP inp_loop_break(cmdLine *pCmdLine) {
+    return INP_LOOP_BREAK;
+}
+
+INP_LOOP change_working_directory(cmdLine *pCmdLine) {
+    int err = 0;
+    if (pCmdLine->argCount == 1) {
+        // do nothing
+    }
+    else if (pCmdLine->argCount == 2) {
+        err = chdir(pCmdLine->arguments[1]);
+        if (err < 0) {
+            if (!dbg_print_error("cd")) {
+                perror("cd");
+            }
+        }
+    }
+    else {
+        printf("cd: too many arguments\n");
+    }
+
+    return INP_LOOP_CONTINUE;
+}
+
+predefined_cmd predefined_commands[] = {
+    { "quit",   inp_loop_break, },
+    { "cd",     change_working_directory, },
+};
+
+predefined_cmd* find_predefined_cmd(char *cmd_name) {
+    predefined_cmd *cmd = predefined_commands;
+    for (int i = 0; i < ARR_LEN(predefined_commands); ++i, ++cmd) {
+        if (strcmp(cmd_name, cmd->cmd_name) == 0) {
+            return cmd;
+        }
+    }
+
+    return NULL;
+}
+
+void child_close_file(int fd) {
+    if (close(fd) < 0) {
+        dbg_print_error("close");
+        _exit(EXIT_FAILURE);
+    }
+}
+
+void child_open_read_file(char const *file_name) {
+    if (fopen(file_name, "r") < 0) {
+        dbg_print_error("fopen");
+        _exit(EXIT_FAILURE);
+    }
+}
+
+void child_open_write_file(char const *file_name) {
+    if (fopen(file_name, "w") < 0) {
+        dbg_print_error("fopen");
+        _exit(EXIT_FAILURE);
+    }
+}
+
+void child_redirect_input_from_file(char const *file_name) {
+    if (file_name) {
+        child_close_file(STDIN_FILENO);
+        child_open_read_file(file_name);
+    }
+}
+
+void child_redirect_output_to_file(char const *file_name) {
+    if (file_name) {
+        child_close_file(STDOUT_FILENO);
+        child_open_write_file(file_name);
+    }
+}
+
+void child_redirect_io_to_files(cmdLine *pCmdLine) {
+    child_redirect_input_from_file(pCmdLine->inputRedirect);
+    child_redirect_output_to_file(pCmdLine->outputRedirect);
+}
+
+void parent_fork_failed(cmdLine *pCmdLine) {
+    if (!dbg_print_error("fork")) {
+        printf("fork error, exiting...\n");
+    }
+    freeCmdLines(pCmdLine);
+    // FREE vars list
+    exit(EXIT_FAILURE);
+}
+
+void child_exec(cmdLine *pCmdLine) {
+    execvp(cmd_get_path(pCmdLine), pCmdLine->arguments);
+    if (!dbg_print_error("execv")) {
+        printf("execv error, exiting...\n");
+    }
+    _exit(EXIT_FAILURE);
+}
+
+bool wait_for_child(pid_t pid) {
+    int status;
+    int err = waitpid(pid, &status, 0);
+    if (err < 0) {
+        dbg_print_error("waitpid");
+        return FALSE;
+    }
+    else {
+        // child terminated
+        return TRUE;
+    }
+}
+
+bool wait_for_child_if_blocking(pid_t pid, cmdLine *pCmdLine) {
+    // ADD process to list
+    if (pCmdLine->blocking) {
+        return wait_for_child(pid);
+    }
+    
+    return TRUE;
+}
+
+bool dbg_print_exec_info(pid_t pid, cmdLine *pCmdLine) {
+    if (DebugMode) {
+        dbg_print("pid: %d, exec cmd:", pid);
+        print_cmd(dbg_out, pCmdLine);
+        dbg_print("\n");
+        return TRUE;
+    }
+
+    return FALSE;
+}
+
+pid_t fork_with_print(cmdLine *pCmdLine) {
+    pid_t pid = fork();
+    if (pid > 0 && !dbg_print_exec_info(pid, pCmdLine) && !pCmdLine->blocking) {
+        non_dbg_print("pid: %d\n", pid);
+    }
+    return pid;
+}
+
+void execute_single(cmdLine *pCmdLine) {
+    pid_t pid = fork_with_print(pCmdLine);
+    if (pid < 0) {
+        // fork failed
+        parent_fork_failed(pCmdLine);
+    }
+    else if (pid == 0) {
+        // child, executes the command
+        child_redirect_io_to_files(pCmdLine);
+        child_exec(pCmdLine);
+    }
+    else {
+        // parent, actual terminal
+        wait_for_child_if_blocking(pid, pCmdLine);
+    }
+}
+
+void execute(cmdLine *pCmdLine) {
+    execute_single(pCmdLine);
+}
+
+INP_LOOP do_cmd(cmdLine *pCmdLine) {
+    INP_LOOP inp_loop = INP_LOOP_CONTINUE;
+    predefined_cmd *predef_cmd = find_predefined_cmd(cmd_get_path(pCmdLine));
+    // EXPAND variables
+    if (predef_cmd) {
+        inp_loop = predef_cmd->handler(pCmdLine);
+    }
+    else {
+        execute(pCmdLine);
+    }
+
+    return inp_loop;
+}
+
+INP_LOOP do_cmd_from_input(char *buf) {
+    INP_LOOP inp_loop = INP_LOOP_CONTINUE;
+    cmdLine *pCmdLine = NULL;
+
+    pCmdLine = parseCmdLines(buf);
+    if (pCmdLine == NULL) {
+        printf("error parsing the command\n");
+    }
+    else {
+        inp_loop = do_cmd(pCmdLine);
+    }
+    freeCmdLines(pCmdLine);
+
+    return inp_loop;
+}
+
+void do_input_loop() {
+    INP_LOOP inp_loop = INP_LOOP_CONTINUE;
+    while (!inp_loop) {
+        char buf[LINE_MAX];
+        char *res_input = fgets(buf, ARR_LEN(buf), stdin);
+        if (feof(stdin)) {
+            break;
+        }
+        if (res_input == NULL) {
+            printf("error inputing line\n");
+            continue;
+        }
+
+        inp_loop = do_cmd_from_input(buf);
+    }
+}
+
+void set_dbg_mode_from_args(int argc, char *argv[]) {
+    dbg_out = stderr;
+    for (int i = 0; i < argc; ++i) {
+        if (strncmp("-d", argv[i], 2) == 0) {
+            DebugMode = TRUE;
+            break;
+        }
+    }
+}
+
+int main(int argc, char *argv[]) {
+    // DEFINE vars list
+    set_dbg_mode_from_args(argc, argv);
+    do_input_loop();
+    // FREE vars list
+    return EXIT_SUCCESS;
+}
