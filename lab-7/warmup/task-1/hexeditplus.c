@@ -59,7 +59,13 @@ int input_filename(char *buffer, int len) {
 }
 
 char* file_open_mode_string(char *mode) {
-    if (strcmp("r", mode) == 0) {
+    if (mode[0] == '\0') {
+        return NULL;
+    }
+    else if (mode[1] == '+') {
+        "reading and writing";
+    }
+    else if (strcmp("r", mode) == 0) {
         return "reading";
     }
     else if (strcmp("w", mode) == 0) {
@@ -102,6 +108,28 @@ typedef struct {
    Any additional fields you deem necessary
   */
 } state;
+
+void get_source_buffers_bounds(state *s, void *addr, int count, char **p_buffer, char **p_end) {
+    char *end;
+    char *buffer;
+    int bytes_count = s->unit_size * count;
+    if (addr == NULL) {
+        char *buffer_end;
+        buffer = (char*)s->mem_buf;
+        buffer_end = buffer + s->mem_count;
+        end = buffer + bytes_count;
+        if (end > buffer_end) {
+            end = buffer_end;
+        }
+    }
+    else {
+        buffer = (char*)addr;
+        end = buffer + bytes_count;
+    }
+
+    *p_buffer = buffer;
+    *end = end;
+}
 
 bool dbg_printf(state *s, char const *f, ...) {
     if (s->debug_mode) {
@@ -248,23 +276,10 @@ void print_from_buffer(state *s, char *buffer, char *end) {
     }
 }
 
-void memory_display(state *s, int addr, int count) {
+void memory_display(state *s, void *addr, int count) {
     char *end;
     char *buffer;
-
-    if (addr == 0) {
-        char *buffer_end;
-        buffer = (char*)s->mem_buf;
-        buffer_end = buffer + s->mem_count;
-        end = buffer + (s->unit_size * count);
-        if (end > buffer_end) {
-            end = buffer_end;
-        }
-    }
-    else {
-        buffer = (char*)addr;
-    }
-
+    get_source_buffers_bounds(s, addr, count, &end, &buffer);
     print_from_buffer(s, buffer, end);
 }
 
@@ -285,15 +300,65 @@ void memory_display_act(state *s) {
         return;
     }
 
-    memory_display(s, addr, u);
+    memory_display(s, (void*)addr, u);
+}
+
+bool validate_enough_bytes_in_memory_buffer(state *s, char *buffer, char *end, int length) {
+    int available_bytes_count = end - buffer;
+    int requested_bytes_count = length * s->unit_size;
+    if (available_bytes_count != requested_bytes_count) {
+        printf("requested %d bytes but memory buffer only has %d\n", requested_bytes_count, available_bytes_count);
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+bool prepare_file_for_save(state *s, FILE *f, int target_location, int length) {
+    int file_end_offset = target_location + (length * s->unit_size);
+    if (!f) {
+        return FALSE;
+    }
+    if (fseek(f, file_end_offset, SEEK_SET) < 0) {
+        printf("Not enough bytes from target location in file\n");
+        return FALSE;
+    }
+    if (fseek(f, target_location, SEEK_SET) < 0) {
+        perror("ERROR - fseek");
+        return FALSE;
+    }
+
+    return TRUE;
 }
 
 void save_to_file_act(state *s) {
+    char *end;
+    char *buffer;
     int source_address, target_location, length;
+    FILE *f = NULL;
     printf("Please enter <source-address> <target-location> <length>\n");
     if (!input_args(3, "%X %X %d", &source_address, &target_location, &length)) {
-
+        return;
     }
+    
+    get_source_buffers_bounds(s, (void*)source_address, length, &end, &buffer);
+    if (source_address == 0 &&
+        !validate_enough_bytes_in_memory_buffer(s, buffer, end, length)) {
+        return;
+    }
+
+    f = open_file(s->file_name, "r+");
+    if (!prepare_file_for_save(s, f, target_location, length)) {
+        fclose(f);
+        return;
+    }
+    if (fwrite(buffer, s->unit_size, length, f) < (s->unit_size * length)) {
+        if (!dbg_print_error(s, "fwrite")) {
+            printf("Error writing to file\n");
+        }
+    }
+
+    fclose(f);
 }
 
 void quit_act(state *s) {
