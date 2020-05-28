@@ -277,9 +277,9 @@ void print_from_buffer(state *s, char *buffer, char *end) {
 }
 
 void memory_display(state *s, void *addr, int count) {
-    char *end;
     char *buffer;
-    get_source_buffers_bounds(s, addr, count, &end, &buffer);
+    char *end;
+    get_source_buffers_bounds(s, addr, count, &buffer, &end);
     print_from_buffer(s, buffer, end);
 }
 
@@ -332,8 +332,8 @@ bool prepare_file_for_save(state *s, FILE *f, int target_location, int length) {
 }
 
 void save_to_file_act(state *s) {
-    char *end;
     char *buffer;
+    char *end;
     int source_address, target_location, length;
     FILE *f = NULL;
     printf("Please enter <source-address> <target-location> <length>\n");
@@ -341,7 +341,7 @@ void save_to_file_act(state *s) {
         return;
     }
     
-    get_source_buffers_bounds(s, (void*)source_address, length, &end, &buffer);
+    get_source_buffers_bounds(s, (void*)source_address, length, &buffer, &end);
     if (source_address == 0 &&
         !validate_enough_bytes_in_memory_buffer(s, buffer, end, length)) {
         return;
