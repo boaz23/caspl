@@ -14,21 +14,28 @@ typedef enum bool {
     TRUE  = 1,
 } bool;
 
-int input_int(int *n, char *f) {
+int input_args(int num_args, char const *f, ...) {
+    va_list args;
     char buffer[256];
     int scan_result = 0;
     if (fgets(buffer, ARR_LEN(buffer), stdin) == NULL) {
         printf("invalid input\n");
         return 0;
     }
-
-    scan_result = sscanf(buffer, f, n);
-    if (scan_result == EOF || scan_result == 0) {
+    
+    va_start(args, f);
+    scan_result = vsscanf(buffer, f, args);
+    va_end(args);
+    if (scan_result == EOF || scan_result < num_args) {
         printf("invalid input\n");
         return 0;
     }
     
     return 1;
+}
+
+int input_int(int *n, char *f) {
+    return input_args(1, f, n);
 }
 int input_int_dec(int *n) {
     return input_int(n, "%d");
@@ -171,23 +178,6 @@ bool load_file_bytes_to_memory(state *s, FILE *f, int offset, int length) {
     return TRUE;
 }
 
-int input_location_length(int *location, int *length) {
-    char buffer[256];
-    int scan_result = 0;
-    if (fgets(buffer, ARR_LEN(buffer), stdin) == NULL) {
-        printf("invalid input\n");
-        return 0;
-    }
-    
-    scan_result = sscanf(buffer, "%X %d", location, length);
-    if (scan_result == EOF || scan_result < 2) {
-        printf("invalid input\n");
-        return 0;
-    }
-    
-    return 1;
-}
-
 void load_into_memory_act(state *s) {
     FILE *f = NULL;
     int location, length;
@@ -197,7 +187,7 @@ void load_into_memory_act(state *s) {
     }
 
     printf("Please enter <location> <length>\n");
-    if (!input_location_length(&location, &length)) {
+    if (!input_args(2, "%X %d", &location, &length)) {
         return;
     }
 
@@ -285,6 +275,11 @@ void memory_display_act(state *s) {
     print_units(s, addr, u);
 }
 
+void save_to_file_act(state *s) {
+    int source_address, target_location, length;
+    printf("Please enter <source-address> <target-location> <length>\n");
+}
+
 void quit_act(state *s) {
     exit(0);
 }
@@ -332,6 +327,7 @@ int main(int argc, char *argv[]) {
         { "Load Into Memory", load_into_memory_act },
         { "Toggle Display Mode", toggle_display_mode_act },
         { "Memory Display", memory_display_act },
+        { "Save Into File", save_to_file_act },
         { "Quit", quit_act },
         { NULL, NULL },
     };
