@@ -239,20 +239,33 @@ char* unit_to_format(state *s) {
     }
 }
 
-void print_units(state *s, int addr, int count) {
-    int unit_size = s->unit_size;
-    char *buffer = (char*)s->mem_buf + addr;
-    char *end = buffer + (unit_size * count);
-    char *buffer_end = buffer + s->mem_count;
-    if (end > buffer_end) {
-        end = buffer_end;
-    }
-
+void print_from_buffer(state *s, char *buffer, char *end) {
+    char *format = unit_to_format(s);
     while (buffer < end) {
         int var = *((int*)(buffer));
-        printf(unit_to_format(s), var);
-        buffer += unit_size;
+        printf(format, var);
+        buffer += s->unit_size;
     }
+}
+
+void memory_display(state *s, int addr, int count) {
+    char *end;
+    char *buffer;
+
+    if (addr == 0) {
+        char *buffer_end;
+        buffer = (char*)s->mem_buf;
+        buffer_end = buffer + s->mem_count;
+        end = buffer + (s->unit_size * count);
+        if (end > buffer_end) {
+            end = buffer_end;
+        }
+    }
+    else {
+        buffer = (char*)addr;
+    }
+
+    print_from_buffer(s, buffer, end);
 }
 
 void memory_display_act(state *s) {
@@ -272,12 +285,15 @@ void memory_display_act(state *s) {
         return;
     }
 
-    print_units(s, addr, u);
+    memory_display(s, addr, u);
 }
 
 void save_to_file_act(state *s) {
     int source_address, target_location, length;
     printf("Please enter <source-address> <target-location> <length>\n");
+    if (!input_args(3, "%X %X %d", &source_address, &target_location, &length)) {
+
+    }
 }
 
 void quit_act(state *s) {
