@@ -5,24 +5,36 @@
 #define dbg_out stderr
 
 #define ARR_LEN(a) ((sizeof((a))) / (sizeof(*(a))))
+#define is_str_empty(s) ((s)[0] == '\0')
 
-#define dbg_printf(s, ...) if (s->debug_mode) fprintf(dbg_out, __VA_ARGS__)
+#define dbg_printf(s, ...) if ((s)->debug_mode) fprintf(dbg_out, __VA_ARGS__);
 
-int input_int(int *n) {
+typedef enum bool {
+    FALSE = 0,
+    TRUE  = 1,
+} bool;
+
+int input_int(int *n, char *f) {
     char buffer[256];
     int scan_result = 0;
     if (fgets(buffer, ARR_LEN(buffer), stdin) == NULL) {
         printf("invalid input\n");
         return 0;
     }
-    
-    scan_result = sscanf(buffer, "%d", n);
+
+    scan_result = sscanf(buffer, f, n);
     if (scan_result == EOF || scan_result == 0) {
         printf("invalid input\n");
         return 0;
     }
     
     return 1;
+}
+int input_int_dec(int *n) {
+    return input_int(n, "%d");
+}
+int input_int_hex(int *n) {
+    return input_int(n, "%X");
 }
 
 int input_filename(char *buffer, int len) {
@@ -39,6 +51,37 @@ int input_filename(char *buffer, int len) {
     return 1;
 }
 
+char* file_open_mode_string(char *mode) {
+    if (strcmp("r", mode) == 0) {
+        return "reading";
+    }
+    else if (strcmp("w", mode) == 0) {
+        return "writing";
+    }
+    else {
+        return NULL;
+    }
+}
+
+void print_file_open_err(char *file_name, char *mode) {
+    char *mode_s = file_open_mode_string(mode);
+    if (mode_s) {
+        printf("Unable to open file '%s' for %s\n", file_name, mode_s);
+    }
+    else {
+        printf("Unable to open file '%s'", file_name);
+    }
+}
+
+FILE* open_file(char *file_name, char *mode) {
+    FILE *f = fopen(file_name, mode);
+    if (!f) {
+        print_file_open_err(file_name, mode);
+    }
+
+    return f;
+}
+
 typedef struct {
   char debug_mode;
   char file_name[128];
@@ -51,6 +94,19 @@ typedef struct {
    Any additional fields you deem necessary
   */
 } state;
+
+char* unit_to_format(int unit) {
+    switch (unit) {
+        case 1:
+            return "%#hhx\n";
+        case 2:
+            return "%#hx\n";
+        case 4:
+            return "%#hhx\n";
+        default:
+            return "Unknown unit";
+    }
+}  
 
 void toggle_debug_mode_act(state *s) {
     s->debug_mode = 1 - s->debug_mode;
@@ -76,7 +132,7 @@ void set_file_name_act(state *s) {
 void set_unit_size_act(state *s) {
     int unit_size;
     printf("Enter unit size: ");
-    if (!input_int(&unit_size)) {
+    if (!input_int_dec(&unit_size)) {
         return;
     }
     if (unit_size != 1 && unit_size != 2 && unit_size != 4) {
@@ -85,6 +141,61 @@ void set_unit_size_act(state *s) {
 
     s->unit_size = unit_size;
     dbg_printf(s, "Debug: set size to %d\n", s->unit_size);
+}
+
+bool load_file_bytes_to_memory(FILE *f, int offset, int length, int size, unsigned char *mem_buf) {
+    if (fseek(f, offset, SEEK_SET) < 0) {
+        perror("ERROR - fseek");
+        return FALSE;
+    }
+    if (fread(mem_buf, size, length, f) < 0) {
+        perror("ERROR: fread");
+        return FALSE;
+    }
+
+    mem_buf[size * length] = '\0';
+    printf("Loaded %d units into memory\n", length);
+    return TRUE;
+}
+
+int input_location_length(int *location, int *length) {
+    char buffer[256];
+    int scan_result = 0;
+    if (fgets(buffer, ARR_LEN(buffer), stdin) == NULL) {
+        printf("invalid input\n");
+        return 0;
+    }
+    
+    scan_result = sscanf(buffer, "%X %d", location, length);
+    if (scan_result == EOF || scan_result < 2) {
+        printf("invalid input\n");
+        return 0;
+    }
+    
+    return 1;
+}
+
+void load_into_memory_act(state *s) {
+    FILE *f = NULL;
+    int location, length;
+    if (is_str_empty(s->file_name)) {
+        printf("No file has been specified.\n");
+        return;
+    }
+
+    printf("Please enter <location> <length>\n");
+    if (!input_location_length(&location, &length)) {
+        return;
+    }
+
+    f = open_file(s->file_name, "r");
+    if (!f) {
+        return;
+    }
+
+    dbg_printf(s, "file name: %s, location: 0x%X, length: %d\n", s->file_name, location, length);
+    load_file_bytes_to_memory(f, location, length, s->unit_size, s->mem_buf);
+    fclose(f);
 }
 
 void quit_act(state *s) {
@@ -130,6 +241,7 @@ int main(int argc, char *argv[]) {
         { "Toggle Debug Mode", toggle_debug_mode_act },
         { "Set File Name", set_file_name_act },
         { "Set Unit Size", set_unit_size_act },
+        { "Load Into Memory", load_into_memory_act },
         { "Quit", quit_act },
         { NULL, NULL },
     };
@@ -143,7 +255,7 @@ int main(int argc, char *argv[]) {
         dbg_print_values(ps);
         printf("Choose action:\n");
         print_menu(menu);
-        if (!input_int(&option)) {
+        if (!input_int_dec(&option)) {
             continue;
         }
 
