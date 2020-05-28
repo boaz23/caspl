@@ -63,7 +63,7 @@ char* file_open_mode_string(char *mode) {
         return NULL;
     }
     else if (mode[1] == '+') {
-        "reading and writing";
+        return "reading and writing";
     }
     else if (strcmp("r", mode) == 0) {
         return "reading";
@@ -128,7 +128,7 @@ void get_source_buffers_bounds(state *s, void *addr, int count, char **p_buffer,
     }
 
     *p_buffer = buffer;
-    *end = end;
+    *p_end = end;
 }
 
 bool dbg_printf(state *s, char const *f, ...) {
