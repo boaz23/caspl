@@ -314,18 +314,23 @@ bool validate_enough_bytes_in_memory_buffer(state *s, char *buffer, char *end, i
     return TRUE;
 }
 
-bool prepare_file_for_save(state *s, FILE *f, int target_location, int length) {
-    int file_end_offset = target_location + (length * s->unit_size);
-    if (!f) {
+bool prepare_file_for_save(FILE *f, int target_location) {
+    int last_file_offset;
+    if (fseek(f, 0, SEEK_END) < 0) {
+        perror("ERROR: fseek");
         return FALSE;
     }
-    if (fseek(f, file_end_offset, SEEK_SET) < 0) {
-        printf("Not enough bytes from target location in file\n");
+    last_file_offset = ftell(f);
+    if (last_file_offset < 0) {
+        perror("ERROR: ftell");
+        return FALSE;
+    }
+    if (last_file_offset < target_location) {
+        printf("The offset is too big for the file\n");
         return FALSE;
     }
     if (fseek(f, target_location, SEEK_SET) < 0) {
-        perror("ERROR - fseek");
-        return FALSE;
+        perror("ERROR: fseek");
     }
 
     return TRUE;
@@ -348,13 +353,14 @@ void save_to_file_act(state *s) {
     }
 
     f = open_file(s->file_name, "r+");
-    if (!prepare_file_for_save(s, f, target_location, length)) {
-        fclose(f);
+    if (!f) {
         return;
     }
-    if (fwrite(buffer, s->unit_size, length, f) < (s->unit_size * length)) {
-        if (!dbg_print_error(s, "fwrite")) {
-            printf("Error writing to file\n");
+    if (prepare_file_for_save(f, target_location)) {
+        if (fwrite(buffer, s->unit_size, length, f) < (s->unit_size * length)) {
+            if (!dbg_print_error(s, "fwrite")) {
+                printf("Error writing to file\n");
+            }
         }
     }
 
