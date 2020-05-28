@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
+#include <stdarg.h>
 
 #define dbg_out stderr
 
@@ -115,19 +116,6 @@ bool dbg_print_error(state *s, char const *err) {
     return FALSE;
 }
 
-char* unit_to_format(int unit) {
-    switch (unit) {
-        case 1:
-            return "%#hhx\n";
-        case 2:
-            return "%#hx\n";
-        case 4:
-            return "%#hhx\n";
-        default:
-            return "Unknown unit";
-    }
-}  
-
 void toggle_debug_mode_act(state *s) {
     s->debug_mode = 1 - s->debug_mode;
     if (s->debug_mode) {
@@ -163,17 +151,22 @@ void set_unit_size_act(state *s) {
     dbg_printf(s, "Debug: set size to %d\n", s->unit_size);
 }
 
-bool load_file_bytes_to_memory(FILE *f, int offset, int length, int size, unsigned char *mem_buf) {
+bool load_file_bytes_to_memory(state *s, FILE *f, int offset, int length) {
+    unsigned char *mem_buf = s->mem_buf;
+    int size = s->unit_size;
+    int bytes_count;
     if (fseek(f, offset, SEEK_SET) < 0) {
         perror("ERROR - fseek");
         return FALSE;
     }
-    if (fread(mem_buf, size, length, f) < 0) {
+    bytes_count = fread(mem_buf, size, length, f);
+    if (bytes_count < 0) {
         perror("ERROR: fread");
         return FALSE;
     }
 
-    mem_buf[size * length] = '\0';
+    mem_buf[bytes_count] = '\0';
+    s->mem_count = bytes_count;
     printf("Loaded %d units into memory\n", length);
     return TRUE;
 }
@@ -214,7 +207,7 @@ void load_into_memory_act(state *s) {
     }
 
     dbg_printf(s, "file name: %s, location: 0x%X, length: %d\n", s->file_name, location, length);
-    load_file_bytes_to_memory(f, location, length, s->unit_size, s->mem_buf);
+    load_file_bytes_to_memory(s, f, location, length);
     fclose(f);
 }
 
@@ -226,6 +219,70 @@ void toggle_display_mode_act(state *s) {
     else {
         dbg_printf(s, "Display flag now off, decimal representations\n");
     }
+}
+
+char* unit_to_format(state *s) {
+    switch (s->unit_size) {
+        case 1:
+            if (s->display_mode) {
+                return "%hhX\n";
+            }
+            else {
+                return "%hhd\n";
+            }
+        case 2:
+            if (s->display_mode) {
+                return "%hX\n";
+            }
+            else {
+                return "%hd\n";
+            }
+        case 4:
+            if (s->display_mode) {
+                return "%X\n";
+            }
+            else {
+                return "%d\n";
+            }
+        default:
+            return NULL;
+    }
+}
+
+void print_units(state *s, int addr, int count) {
+    int unit_size = s->unit_size;
+    char *buffer = (char*)s->mem_buf + addr;
+    char *end = buffer + (unit_size * count);
+    char *buffer_end = buffer + s->mem_count;
+    if (end > buffer_end) {
+        end = buffer_end;
+    }
+
+    while (buffer < end) {
+        int var = *((int*)(buffer));
+        printf(unit_to_format(s), var);
+        buffer += unit_size;
+    }
+}
+
+void memory_display_act(state *s) {
+    int u, addr;
+
+    if (s->display_mode) {
+        printf("Hexadecimal\n===========\n");
+    }
+    else {
+        printf("Decimal\n=======\n");
+    }
+
+    if (!input_int_dec(&u)) {
+        return;
+    }
+    if (!input_int_hex(&addr)) {
+        return;
+    }
+
+    print_units(s, addr, u);
 }
 
 void quit_act(state *s) {
@@ -242,7 +299,7 @@ void print_menu(menu_item const menu[]) {
     menu_item const *current_menu_item = menu;
     int i = 0;
     while (current_menu_item->name != NULL) {
-        printf("%d)-%s\n", i, current_menu_item->name);
+        printf("%d-%s\n", i, current_menu_item->name);
         ++current_menu_item;
         ++i;
     }
@@ -252,6 +309,7 @@ void dbg_print_values(state *s) {
     dbg_printf(s, "unit size: %d\n", s->unit_size);
     dbg_printf(s, "file name: %s\n", s->file_name);
     dbg_printf(s, "mem count: %d\n", s->mem_count);
+    dbg_printf(s, "display mode: %s\n", s->display_mode ? "hexadecimal" : "decimal");
 }
 
 menu_func get_menu_func(menu_item const menu[], int option, int len) {
@@ -273,6 +331,7 @@ int main(int argc, char *argv[]) {
         { "Set Unit Size", set_unit_size_act },
         { "Load Into Memory", load_into_memory_act },
         { "Toggle Display Mode", toggle_display_mode_act },
+        { "Memory Display", memory_display_act },
         { "Quit", quit_act },
         { NULL, NULL },
     };
