@@ -1,13 +1,12 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <errno.h>
 
 #define dbg_out stderr
 
 #define ARR_LEN(a) ((sizeof((a))) / (sizeof(*(a))))
 #define is_str_empty(s) ((s)[0] == '\0')
-
-#define dbg_printf(s, ...) if ((s)->debug_mode) fprintf(dbg_out, __VA_ARGS__);
 
 typedef enum bool {
     FALSE = 0,
@@ -88,12 +87,33 @@ typedef struct {
   int unit_size;
   unsigned char mem_buf[10000];
   size_t mem_count;
+  bool display_mode;
   /*
    .
    .
    Any additional fields you deem necessary
   */
 } state;
+
+bool dbg_printf(state *s, char const *f, ...) {
+    if (s->debug_mode) {
+        va_list args;
+        va_start(args, f);
+        vfprintf(dbg_out, f, args);
+        va_end(args);
+        return TRUE;
+    }
+    
+    return FALSE;
+}
+bool dbg_print_error(state *s, char const *err) {
+    if (s->debug_mode) {
+        fprintf(dbg_out, "%s: %s\n", err, strerror(errno));
+        return TRUE;
+    }
+
+    return FALSE;
+}
 
 char* unit_to_format(int unit) {
     switch (unit) {
@@ -198,6 +218,16 @@ void load_into_memory_act(state *s) {
     fclose(f);
 }
 
+void toggle_display_mode_act(state *s) {
+    s->display_mode = 1 - s->display_mode;
+    if (s->display_mode) {
+        dbg_printf(s, "Display flag now on, hexadecimal representation\n");
+    }
+    else {
+        dbg_printf(s, "Display flag now off, decimal representations\n");
+    }
+}
+
 void quit_act(state *s) {
     exit(0);
 }
@@ -242,11 +272,12 @@ int main(int argc, char *argv[]) {
         { "Set File Name", set_file_name_act },
         { "Set Unit Size", set_unit_size_act },
         { "Load Into Memory", load_into_memory_act },
+        { "Toggle Display Mode", toggle_display_mode_act },
         { "Quit", quit_act },
         { NULL, NULL },
     };
     state s = {
-        0, "", 1, "", 0
+        0, "", 1, "", 0, FALSE
     };
     state *ps = &s;
 
