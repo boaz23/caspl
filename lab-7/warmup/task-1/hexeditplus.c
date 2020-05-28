@@ -367,6 +367,30 @@ void save_to_file_act(state *s) {
     fclose(f);
 }
 
+void memory_modify_act(state *s) {
+    int location, val;
+    printf("Please enter <location> <val>\n");
+    if (!input_args(2, "%X %X", &location, &val)) {
+        return;
+    }
+
+    dbg_printf(s, "location: %X, val: %X\n", location, val);
+    switch (s->unit_size) {
+        case 1:
+            *((char*)location) = (char)val;
+            break;
+        case 2:
+            *((short*)location) = (short)val;
+            break;
+        case 4:
+            *((int*)location) = (int)val;
+            break;
+        default:
+            dbg_printf(s, "Invalid unit size detected (%d)\n", s->unit_size);
+            break;
+    }
+}
+
 void quit_act(state *s) {
     exit(0);
 }
@@ -415,6 +439,7 @@ int main(int argc, char *argv[]) {
         { "Toggle Display Mode", toggle_display_mode_act },
         { "Memory Display", memory_display_act },
         { "Save Into File", save_to_file_act },
+        { "Memory Modify", memory_modify_act },
         { "Quit", quit_act },
         { NULL, NULL },
     };
