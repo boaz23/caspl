@@ -375,15 +375,21 @@ void memory_modify_act(state *s) {
     }
 
     dbg_printf(s, "location: %X, val: %X\n", location, val);
+    if (location + s->unit_size >= ARR_LEN(s->mem_buf)) {
+        printf("Address and unit size is out of bounds of mem_buf\n");
+        return;
+    }
+
+    void *p_mem = (void*)s->mem_buf + location;
     switch (s->unit_size) {
         case 1:
-            *((char*)location) = (char)val;
+            *((char*)p_mem) = (char)val;
             break;
         case 2:
-            *((short*)location) = (short)val;
+            *((short*)p_mem) = (short)val;
             break;
         case 4:
-            *((int*)location) = (int)val;
+            *((int*)p_mem) = (int)val;
             break;
         default:
             dbg_printf(s, "Invalid unit size detected (%d)\n", s->unit_size);
