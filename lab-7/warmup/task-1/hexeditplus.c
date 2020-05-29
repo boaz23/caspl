@@ -357,7 +357,7 @@ void save_to_file_act(state *s) {
         return;
     }
     if (prepare_file_for_save(f, target_location)) {
-        if (fwrite(buffer, s->unit_size, length, f) < (s->unit_size * length)) {
+        if (fwrite(buffer, s->unit_size, length, f) < length) {
             if (!dbg_print_error(s, "fwrite")) {
                 printf("Error writing to file\n");
             }
@@ -369,13 +369,15 @@ void save_to_file_act(state *s) {
 
 void memory_modify_act(state *s) {
     int location, val;
+    int last_byte_loc;
     printf("Please enter <location> <val>\n");
     if (!input_args(2, "%X %X", &location, &val)) {
         return;
     }
 
     dbg_printf(s, "location: %X, val: %X\n", location, val);
-    if (location + s->unit_size >= ARR_LEN(s->mem_buf)) {
+    last_byte_loc = location + s->unit_size;
+    if (last_byte_loc >= ARR_LEN(s->mem_buf)) {
         printf("Address and unit size is out of bounds of mem_buf\n");
         return;
     }
@@ -394,6 +396,9 @@ void memory_modify_act(state *s) {
         default:
             dbg_printf(s, "Invalid unit size detected (%d)\n", s->unit_size);
             break;
+    }
+    if (s->mem_count < last_byte_loc) {
+        s->mem_count = last_byte_loc;
     }
 }
 
