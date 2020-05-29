@@ -1,0 +1,11 @@
+{
+    "files.associations": {
+        "*.tcc": "c",
+        "complex": "c",
+        "fstream": "c",
+        "bitset": "c",
+        "chrono": "c",
+        "algorithm": "c",
+        "string_view": "c"
+    }
+}
