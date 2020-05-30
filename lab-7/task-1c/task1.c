@@ -299,105 +299,6 @@ void memory_display_act(state *s) {
     memory_display(s, (void*)addr, u);
 }
 
-bool validate_enough_bytes_in_memory_buffer(state *s, char *buffer, char *end, int length) {
-    int available_bytes_count = end - buffer;
-    int requested_bytes_count = length * s->unit_size;
-    if (available_bytes_count != requested_bytes_count) {
-        printf("requested %d bytes but memory buffer only has %d\n", requested_bytes_count, available_bytes_count);
-        return FALSE;
-    }
-
-    return TRUE;
-}
-
-bool prepare_file_for_save(FILE *f, int target_location) {
-    int last_file_offset;
-    if (fseek(f, 0, SEEK_END) < 0) {
-        perror("ERROR: fseek");
-        return FALSE;
-    }
-    last_file_offset = ftell(f);
-    if (last_file_offset < 0) {
-        perror("ERROR: ftell");
-        return FALSE;
-    }
-    if (last_file_offset < target_location) {
-        printf("The offset is too big for the file\n");
-        return FALSE;
-    }
-    if (fseek(f, target_location, SEEK_SET) < 0) {
-        perror("ERROR: fseek");
-    }
-
-    return TRUE;
-}
-
-void save_to_file_act(state *s) {
-    char *buffer;
-    char *end;
-    int source_address, target_location, length;
-    FILE *f = NULL;
-    printf("Please enter <source-address> <target-location> <length>\n");
-    if (!input_args(3, "%X %X %d", &source_address, &target_location, &length)) {
-        return;
-    }
-    
-    get_source_buffers_bounds(s, (void*)source_address, length, &buffer, &end);
-    if (source_address == 0 &&
-        !validate_enough_bytes_in_memory_buffer(s, buffer, end, length)) {
-        return;
-    }
-
-    f = open_file(s->file_name, "r+");
-    if (!f) {
-        return;
-    }
-    if (prepare_file_for_save(f, target_location)) {
-        if (fwrite(buffer, s->unit_size, length, f) < length) {
-            if (!dbg_print_error(s, "fwrite")) {
-                printf("Error writing to file\n");
-            }
-        }
-    }
-
-    fclose(f);
-}
-
-void memory_modify_act(state *s) {
-    int location, val;
-    int last_byte_loc;
-    printf("Please enter <location> <val>\n");
-    if (!input_args(2, "%X %X", &location, &val)) {
-        return;
-    }
-
-    dbg_printf(s, "location: %X, val: %X\n", location, val);
-    last_byte_loc = location + s->unit_size;
-    if (last_byte_loc >= ARR_LEN(s->mem_buf)) {
-        printf("Address and unit size is out of bounds of mem_buf\n");
-        return;
-    }
-
-    void *p_mem = (void*)s->mem_buf + location;
-    switch (s->unit_size) {
-        case 1:
-            *((char*)p_mem) = (char)val;
-            break;
-        case 2:
-            *((short*)p_mem) = (short)val;
-            break;
-        case 4:
-            *((int*)p_mem) = (int)val;
-            break;
-        default:
-            dbg_printf(s, "Invalid unit size detected (%d)\n", s->unit_size);
-            break;
-    }
-    if (s->mem_count < last_byte_loc) {
-        s->mem_count = last_byte_loc;
-    }
-}
-
 void quit_act(state *s) {
     exit(0);
 }
@@ -445,8 +346,6 @@ int main(int argc, char *argv[]) {
         { "Load Into Memory", load_into_memory_act },
         { "Toggle Display Mode", toggle_display_mode_act },
         { "Memory Display", memory_display_act },
-        { "Save Into File", save_to_file_act },
-        { "Memory Modify", memory_modify_act },
         { "Quit", quit_act },
         { NULL, NULL },
     };
