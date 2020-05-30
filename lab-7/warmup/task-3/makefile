@@ -10,7 +10,7 @@ OBJ_DIR		:= .
 LIST_DIR	:= .
 BIN_DIR		:= .
 
-PRG_NAME	:= hexeditplus
+PRG_NAME	:= elf-main-finder
 OBJECTS		:= $(OBJ_DIR)/$(PRG_NAME).o
 
 $(PRG_NAME): $(OBJECTS)

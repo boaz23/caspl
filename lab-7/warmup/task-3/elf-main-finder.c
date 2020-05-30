@@ -137,20 +137,39 @@ bool find_section_header(FILE *f, int name_index, int section_headers_count, Elf
     return TRUE;
 }
 
+bool find_symbol_entry(FILE *f, int name_index, int symbols_count, Elf32_Sym **sym_entry) {
+    for (int i = 0; i < symbols_count; ++i) {
+        if (!read_struct(f, *sym_entry, sizeof(Elf32_Sym))) {
+            return FALSE;
+        }
+
+        if ((*sym_entry)->st_name == (Elf32_Word)name_index) {
+            return TRUE;
+        }
+    }
+    
+    *sym_entry = NULL;
+    return TRUE;
+}
+
 int offset_of_section_header(Elf32_Ehdr *elf_header, int section_header_index) {
     return elf_header->e_shoff + (section_header_index * elf_header->e_shentsize);
 }
 
 void print_main_info_of_file(FILE *f) {
     Elf32_Ehdr elf_header;
-    Elf32_Shdr sym_table_section_header, *p_sym_table_section_header = &sym_table_section_header;
+
     int sym_table_string_table_index;
+    Elf32_Shdr sym_table_section_header, *p_sym_table_section_header = &sym_table_section_header;
+
     int main_sym_name_index;
+    Elf32_Sym main_sym_entry, *p_main_sym_entry = &main_sym_entry;
+    Elf32_Shdr main_sym_section_section_header;
     
     if (!read_struct(f, &elf_header, sizeof(elf_header))) {
         return;
     }
-    if (strncmp("ELF", (char*)(&elf_header.e_ident) + 1, 3) != 0) {
+    if (elf_header.e_ident[0] != 0x7E && strncmp("ELF", (char*)(&elf_header.e_ident) + 1, 3) != 0) {
         printf("bad elf header\n");
         return;
     }
@@ -177,7 +196,7 @@ void print_main_info_of_file(FILE *f) {
         printf("sym table section header entry not found\n");
         return;
     }
-     
+    
     if (!find_string_in_section(
         f,
         offset_of_section_header(&elf_header, sym_table_section_header.sh_link),
@@ -189,6 +208,34 @@ void print_main_info_of_file(FILE *f) {
         printf("sym table not found\n");
         return;
     }
+
+    if (!file_seek(f, sym_table_section_header.sh_offset)) {
+        return;
+    }
+    if (!find_symbol_entry(
+        f,
+        main_sym_name_index,
+        sym_table_section_header.sh_size / sym_table_section_header.sh_entsize,
+        &p_main_sym_entry)) {
+        return;
+    }
+    if (p_main_sym_entry == NULL) {
+        printf("symbol entry of 'main' was not found\n");
+        return;
+    }
+    
+    if (!file_seek(f, offset_of_section_header(&elf_header, main_sym_entry.st_shndx))) {
+        return;
+    }
+    if (!read_struct(f, &main_sym_section_section_header, sizeof(Elf32_Shdr))) {
+        return;
+    }
+
+    printf("main virtual address: 0x%08X\n", main_sym_entry.st_value);
+    printf("main size: %d\n", main_sym_entry.st_size);
+    printf("text section virtual address: 0x%08X\n", main_sym_section_section_header.sh_addr);
+    printf("text section file offset: 0x%X\n", main_sym_section_section_header.sh_offset);
+    printf("main file offset: 0x%X\n", main_sym_section_section_header.sh_offset + (main_sym_entry.st_value - main_sym_section_section_header.sh_addr));
 }
 
 void print_main_info(char *file_name) {
