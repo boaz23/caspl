@@ -388,25 +388,25 @@ void print_section_names() {
     }
 }
 
-void print_symbol_table(Elf32_Shdr *symnol_section_header) {
+void print_symbol_table(Elf32_Shdr *symbol_section_header) {
     Elf32_Sym *symbol_entry;
     Elf32_Shdr *symbol_table_string_table_section_header;
     char *p_symbol_table_string_table;
     int symbol_table_string_table_size;
     int symbols_count;
 
-    symbols_count = symnol_section_header->sh_size / symnol_section_header->sh_entsize;
-    symbol_table_string_table_section_header = get_section_header(symnol_section_header->sh_link);
+    symbols_count = symbol_section_header->sh_size / symbol_section_header->sh_entsize;
+    symbol_table_string_table_section_header = get_section_header(symbol_section_header->sh_link);
     p_symbol_table_string_table = (char*)(map_start + symbol_table_string_table_section_header->sh_offset);
     symbol_table_string_table_size = symbol_table_string_table_section_header->sh_size;
 
     printf("\n");
-    dbg_printf("Symbol table size: %d (bytes)\n", symnol_section_header->sh_size);
+    dbg_printf("Symbol table size: %d (bytes)\n", symbol_section_header->sh_size);
     dbg_printf("Symbol table symbols count: %d\n", symbols_count);
 
     printf("Num Value%*s Sh-Ndx Sh-Name%*s Size%*s Name%*s\n", 5, "", 13, "", 5, "", 26, "");
 
-    symbol_entry = (Elf32_Sym*)(map_start + symnol_section_header->sh_offset);
+    symbol_entry = (Elf32_Sym*)(map_start + symbol_section_header->sh_offset);
     for (int i = 0; i < symbols_count; ++i, ++symbol_entry) {
         Elf32_Shdr *section_header_of_symbol;
         char *section_name;
@@ -460,18 +460,44 @@ void print_symbols() {
     }
 }
 
-void print_relocation_table(Elf32_Shdr *section_header) {
+void print_relocation_table(Elf32_Shdr *relocation_section_header) {
     Elf32_Rel *relocation_entry;
+    char *relocation_section_name;
     int relocations_count;
+    
+    Elf32_Shdr *symbol_section_header;
+    Elf32_Shdr *symbol_table_string_table_section_header;
+    char *p_symbol_table_string_table;
+    int symbol_table_string_table_size;
 
-    relocations_count = section_header->sh_size / section_header->sh_entsize;
+    relocations_count = relocation_section_header->sh_size / relocation_section_header->sh_entsize;
 
-    printf("\n");
-    printf("Offset%*s Info%*s\n", 4, "", 6, "");
+    symbol_section_header = get_section_header(relocation_section_header->sh_link);
+    symbol_table_string_table_section_header = get_section_header(symbol_section_header->sh_link);
+    p_symbol_table_string_table = (char*)(map_start + symbol_table_string_table_section_header->sh_offset);
+    symbol_table_string_table_size = symbol_table_string_table_section_header->sh_size;
 
-    relocation_entry = (Elf32_Rel*)(map_start + section_header->sh_offset);
+    elf_name_of_section(relocation_section_header, &relocation_section_name);
+    printf("\nRelocation section '%s' at offset 0x%X contains 8 entries:\n", relocation_section_name, relocation_section_header->sh_offset);
+    printf("Offset%*s Info%*s Type Sym-Value%*s Sym-Name%*s\n", 4, "", 6, "", 1, "", 11, "");
+
+    relocation_entry = (Elf32_Rel*)(map_start + relocation_section_header->sh_offset);
     for (int i = 0; i < relocations_count; ++i, ++relocation_entry) {
-        printf("0x%08X 0x%08X", relocation_entry->r_offset, relocation_entry->r_info);
+        Elf32_Sym *symbol_entry = (Elf32_Sym*)(map_start + symbol_section_header->sh_offset + (ELF32_R_SYM(relocation_entry->r_info) * symbol_section_header->sh_entsize));
+        char *symbol_name;
+        int len;
+        char* p_sym_str = p_symbol_table_string_table + symbol_entry->st_name;
+        int max_read_amount = symbol_table_string_table_size - (p_sym_str - p_symbol_table_string_table);
+        fill_next_str_in_string_table(p_sym_str, &symbol_name, max_read_amount, &len);
+
+        printf(
+            "0x%08X 0x%08X %-4d 0x%08X %-20s",
+            relocation_entry->r_offset,
+            relocation_entry->r_info,
+            ELF32_R_TYPE(relocation_entry->r_info),
+            symbol_entry->st_value,
+            symbol_name
+        );
         printf("\n");
     }
 }
@@ -492,10 +518,6 @@ void relocation_table() {
         if (section_header->sh_link == SHN_UNDEF) {
             dbg_printf("WARN: relocation table without symbol table (%d section header index)\n", i);
             continue;
-        }
-        if (section_header->sh_info == SHN_UNDEF) {
-            dbg_printf("WARN: relocation table without associate section (%d section header index)\n", i);
-            // continue;
         }
 
         print_relocation_table(section_header);
@@ -534,7 +556,12 @@ INP_LOOP print_symbols_action() {
     return INP_LOOP_CONTINUE;
 }
 INP_LOOP relocation_table_action() {
-    relocation_table();
+    if (mapped) {
+        relocation_table();
+    }
+    else {
+        printf("No ELF file is loaded.\n");
+    }
     return INP_LOOP_CONTINUE;
 }
 INP_LOOP quit_action() {
