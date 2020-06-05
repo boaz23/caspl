@@ -96,6 +96,9 @@ int Currentfd = INVALID_FILE;
 int map_length = INVALID_FILE;
 void *map_start = NULL;
 
+char* section_name_string_table;
+int section_name_string_table_size;
+
 void reset_map_values() {
     map_start = NULL;
     map_length = INVALID_FILE;
@@ -151,14 +154,11 @@ bool map_file_to_memory(char *file_name, int open_flags) {
     return mapped;
 }
 
-char* e_ident_magic_bytes(byte *ident) {
+char* e_ident_magic_bytes_string(byte *ident) {
     return (char*)ident + 1;
 }
-void e_ident_cpy_magic_bytes(byte *ident, char *magic) {
-    memcpy(magic, e_ident_magic_bytes(ident), 3);
-}
 
-char* e_ident_data(byte *ident) {
+char* e_ident_data_string(byte *ident) {
     switch (ident[EI_DATA]) {
         case ELFDATANONE:
             return NULL;
@@ -177,7 +177,7 @@ bool is_valid_elf32_file(Elf32_Ehdr *header) {
         return FALSE;
     }
     
-    if (ident[EI_MAG0] != ELFMAG0 || strncmp("ELF", e_ident_magic_bytes(ident), 3) != 0) {
+    if (ident[EI_MAG0] != ELFMAG0 || strncmp("ELF", e_ident_magic_bytes_string(ident), 3) != 0) {
         return FALSE;
     }
 
@@ -191,7 +191,7 @@ bool is_valid_elf32_file(Elf32_Ehdr *header) {
     return TRUE;
 }
 
-bool elf_initialize_data(Elf32_Ehdr *header) {
+bool elf_check_header(Elf32_Ehdr *header) {
     byte* ident = header->e_ident;
     if (!is_valid_elf32_file(header)) {
         printf("File is not a valid elf file.\n");
@@ -219,12 +219,10 @@ void print_elf_header_info(char *info_name, char *format, ...) {
 
 void print_elf_file_info(Elf32_Ehdr *header) {
     byte* ident = header->e_ident;
-    char magic[3];
-
-    e_ident_cpy_magic_bytes(ident, magic);
+    
     printf("\n");
-    print_elf_header_info("Magic bytes", "%s", magic);
-    print_elf_header_info("Data", "%s", e_ident_data(ident));
+    print_elf_header_info("Magic bytes", "%s", e_ident_magic_bytes_string(ident));
+    print_elf_header_info("Data", "%.3s", e_ident_data_string(ident));
     print_elf_header_info("Entry point", "0x%X", header->e_entry);
     print_elf_header_info("Section headers table offset", "0x%X", header->e_shoff);
     print_elf_header_info("Number of section header entries", "%d", header->e_shnum);
@@ -247,10 +245,106 @@ void examine_elf_file() {
     }
 
     header = (Elf32_Ehdr*)map_start;
-    if (!elf_initialize_data(header)) {
+    if (!elf_check_header(header)) {
         return;
     }
     print_elf_file_info(header);
+}
+
+bool elf_section_names_string_table(Elf32_Ehdr *header) {
+    Elf32_Shdr *section_names_string_table_header;
+    if (header->e_shstrndx == SHN_UNDEF) {
+        printf("The ELF file does not have a section names string table");
+        return FALSE;
+    }
+
+    section_names_string_table_header = (Elf32_Shdr*)(map_start + header->e_shoff + (header->e_shstrndx * header->e_shentsize));
+    section_name_string_table = (char*)(map_start + section_names_string_table_header->sh_offset);
+    section_name_string_table_size = section_names_string_table_header->sh_size;
+    return TRUE;
+}
+
+void fill_next_str_in_string_table(char *p_str_table, char **p_buf, int max_read_amount) {
+    int read_counter;
+    char *buf, *p_current_char;
+
+    *p_buf = NULL;
+    read_counter = 1;
+    p_current_char = p_str_table;
+    while (*p_current_char != '\0' && read_counter < max_read_amount) {
+        ++p_current_char;
+        ++read_counter;
+    }
+
+    p_current_char = p_str_table;
+    buf = malloc(read_counter);
+    for (int i = 0; i < read_counter; ++i) {
+        buf[i] = p_current_char[i];
+    }
+    
+    *p_buf = buf;
+}
+
+char* elf_section_type_string(Elf32_Word section_type) {
+    switch (section_type) {
+        case SHT_NULL:
+            return "NULL";
+        case SHT_PROGBITS:
+            return "PROGBITS";
+        case SHT_SYMTAB:
+            return "SYMTAB";
+        case SHT_STRTAB:
+            return "STRTAB";
+        case SHT_RELA:
+            return "RELA";
+        case SHT_HASH:
+            return "HASH";
+        case SHT_DYNAMIC:
+            return "DYNAMIC";
+        case SHT_NOTE:
+            return "NOTE";
+        case SHT_NOBITS:
+            return "NOBITS";
+        case SHT_REL:
+            return "REL";
+        case SHT_SHLIB:
+            return "SHLIB";
+        case SHT_DYNSYM:
+            return "DYNSYM";
+        default:
+            return "";
+    }
+}
+
+void print_section_names() {
+    Elf32_Ehdr *header = (Elf32_Ehdr*)map_start;
+    Elf32_Shdr *section_header;
+    int sections_count;
+    char *section_name;
+    if (!elf_section_names_string_table(header)) {
+        return;
+    }
+
+    printf("\n[Nr] Name%*s Address%*s Offset%*s Size%*s Type%*s\n", 16, "", 3, "", 4, "", 5, "", 4, "");
+
+    section_header = (Elf32_Shdr*)(map_start + header->e_shoff);
+    sections_count = header->e_shnum;
+    for (int i = 0; i < sections_count; ++i) {
+        char* p_sh_str = section_name_string_table + section_header->sh_name;
+        int max_read_amount = section_name_string_table_size - (p_sh_str - section_name_string_table);
+        fill_next_str_in_string_table(p_sh_str, &section_name, max_read_amount);
+        printf(
+            "[%-2d] %-20s 0x%08X 0x%08X %-9d %-8s\n",
+            i,
+            section_name,
+            section_header->sh_addr,
+            section_header->sh_offset,
+            section_header->sh_size,
+            elf_section_type_string(section_header->sh_type)
+        );
+        free(section_name);
+        ++section_header;
+    }
 }
 
 typedef enum INP_LOOP {
@@ -264,6 +358,15 @@ INP_LOOP toggle_debug_mode_action() {
 }
 INP_LOOP examine_elf_file_action() {
     examine_elf_file();
+    return INP_LOOP_CONTINUE;
+}
+INP_LOOP print_section_names_action() {
+    if (mapped) {
+        print_section_names();
+    }
+    else {
+        printf("No ELF file is loaded.\n");
+    }
     return INP_LOOP_CONTINUE;
 }
 INP_LOOP quit_action() {
@@ -301,6 +404,7 @@ INP_LOOP invoke_menu_action(menu_func func) {
 menu_item const menu[] = {
     { "Toggle Debug Mode", toggle_debug_mode_action },
     { "Examine ELF File", examine_elf_file_action },
+    { "Print Section Names", print_section_names_action },
     { "Quit", quit_action },
     { NULL, NULL }
 };
