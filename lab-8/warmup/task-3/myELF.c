@@ -460,6 +460,48 @@ void print_symbols() {
     }
 }
 
+void print_relocation_table(Elf32_Shdr *section_header) {
+    Elf32_Rel *relocation_entry;
+    int relocations_count;
+
+    relocations_count = section_header->sh_size / section_header->sh_entsize;
+
+    printf("\n");
+    printf("Offset%*s Info%*s\n", 4, "", 6, "");
+
+    relocation_entry = (Elf32_Rel*)(map_start + section_header->sh_offset);
+    for (int i = 0; i < relocations_count; ++i, ++relocation_entry) {
+        printf("0x%08X 0x%08X", relocation_entry->r_offset, relocation_entry->r_info);
+        printf("\n");
+    }
+}
+
+void relocation_table() {
+    Elf32_Shdr *section_header;
+    int sections_count;
+    if (!elf_section_names_string_table(elf_header)) {
+        return;
+    }
+
+    section_header = (Elf32_Shdr*)(map_start + elf_header->e_shoff);
+    sections_count = elf_header->e_shnum;
+    for (int i = 0; i < sections_count; ++i, ++section_header) {
+        if (section_header->sh_type != SHT_REL) {
+            continue;
+        }
+        if (section_header->sh_link == SHN_UNDEF) {
+            dbg_printf("WARN: relocation table without symbol table (%d section header index)\n", i);
+            continue;
+        }
+        if (section_header->sh_info == SHN_UNDEF) {
+            dbg_printf("WARN: relocation table without associate section (%d section header index)\n", i);
+            // continue;
+        }
+
+        print_relocation_table(section_header);
+    }
+}
+
 typedef enum INP_LOOP {
     INP_LOOP_CONTINUE    = 0,
     INP_LOOP_BREAK       = 1,
@@ -489,6 +531,10 @@ INP_LOOP print_symbols_action() {
     else {
         printf("No ELF file is loaded.\n");
     }
+    return INP_LOOP_CONTINUE;
+}
+INP_LOOP relocation_table_action() {
+    relocation_table();
     return INP_LOOP_CONTINUE;
 }
 INP_LOOP quit_action() {
@@ -528,6 +574,7 @@ menu_item const menu[] = {
     { "Examine ELF File", examine_elf_file_action },
     { "Print Section Names", print_section_names_action },
     { "Print Symbols", print_symbols_action },
+    { "Relocation Tables", relocation_table_action },
     { "Quit", quit_action },
     { NULL, NULL }
 };
