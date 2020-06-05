@@ -269,25 +269,27 @@ bool elf_section_names_string_table(Elf32_Ehdr *header) {
     return TRUE;
 }
 
-void fill_next_str_in_string_table(char *p_str_table, char **p_buf, int max_read_amount) {
-    int read_counter;
+void fill_next_str_in_string_table(char **p_str_table, char **p_buf, int *p_max_read_amount) {
+    int read_counter, max_read_amount;
     char *buf, *p_current_char;
 
     *p_buf = NULL;
     read_counter = 1;
-    p_current_char = p_str_table;
+    max_read_amount = *p_max_read_amount;
+    p_current_char = *p_str_table;
     while (*p_current_char != '\0' && read_counter < max_read_amount) {
         ++p_current_char;
         ++read_counter;
     }
 
-    p_current_char = p_str_table;
+    p_current_char = *p_str_table;
     buf = malloc(read_counter);
     for (int i = 0; i < read_counter; ++i) {
         buf[i] = p_current_char[i];
     }
     
     *p_buf = buf;
+    *p_str_table = p_current_char + read_counter;
 }
 
 char* elf_section_type_string(Elf32_Word section_type) {
@@ -344,7 +346,7 @@ void print_section_names() {
     for (int i = 0; i < sections_count; ++i) {
         char* p_sh_str = section_name_string_table + section_header->sh_name;
         int max_read_amount = section_name_string_table_size - (p_sh_str - section_name_string_table);
-        fill_next_str_in_string_table(p_sh_str, &section_name, max_read_amount);
+        fill_next_str_in_string_table(&p_sh_str, &section_name, &max_read_amount);
 
         if (!DebugMode) {
             printf(
