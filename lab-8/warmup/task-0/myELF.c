@@ -257,24 +257,15 @@ void examine_elf_file() {
     print_elf_file_info();
 }
 
-typedef enum INP_LOOP {
-    INP_LOOP_CONTINUE    = 0,
-    INP_LOOP_BREAK       = 1,
-} INP_LOOP;
-
-INP_LOOP toggle_debug_mode_action() {
+void toggle_debug_mode_action() {
     DebugMode = 1 - DebugMode;
-    return INP_LOOP_CONTINUE;
 }
-INP_LOOP examine_elf_file_action() {
-    examine_elf_file();
-    return INP_LOOP_CONTINUE;
-}
-INP_LOOP quit_action() {
-    return INP_LOOP_BREAK;
+void quit_action() {
+    cleanup();
+    exit(0);
 }
 
-typedef INP_LOOP (*menu_func)();
+typedef void (*menu_func)();
 typedef struct menu_item {
     char *name;
     menu_func func;
@@ -298,20 +289,15 @@ menu_func get_menu_func(menu_item const menu[], int option, int len) {
     return NULL;
 }
 
-INP_LOOP invoke_menu_action(menu_func func) {
-    return func();
-}
-
 menu_item const menu[] = {
     { "Toggle Debug Mode", toggle_debug_mode_action },
-    { "Examine ELF File", examine_elf_file_action },
+    { "Examine ELF File", examine_elf_file },
     { "Quit", quit_action },
     { NULL, NULL }
 };
 
 void do_input_loop() {
-    INP_LOOP inp_loop = INP_LOOP_CONTINUE;
-    while (!inp_loop) {
+    while (TRUE) {
         int option = -1;
         print_menu(menu);
         printf("Option: ");
@@ -324,7 +310,7 @@ void do_input_loop() {
             break;
         }
 
-        inp_loop = invoke_menu_action(func);
+        func();
         printf("DONE.\n\n");
     }
 }
