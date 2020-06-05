@@ -4,12 +4,16 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/mman.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 #include <elf.h>
 #include <errno.h>
 
 #define ARR_LEN(a) ((sizeof((a))) / (sizeof(*(a))))
 #define is_str_empty(s) ((s)[0] == '\0')
 
+typedef unsigned char byte;
 typedef enum bool {
     FALSE = 0,
     TRUE  = 1,
@@ -83,17 +87,95 @@ int input_filename(char *buffer, int len) {
     return 1;
 }
 
-int Currentfd = -1;
-int map_length = -1;
+// -------------------------------------
+// ---------- Task code start ----------
+// -------------------------------------
+#define INVALID_FILE -1
+int Currentfd = INVALID_FILE;
+int map_length = INVALID_FILE;
 void *map_start = NULL;
 
 void cleanup() {
     if (map_start) {
         munmap(map_start, map_length);
+        map_start = NULL;
+        map_length = INVALID_FILE;
     }
-    if (Currentfd >= 0) {
+    if (Currentfd > INVALID_FILE) {
         close(Currentfd);
+        Currentfd = INVALID_FILE;
     }
+}
+
+bool map_file_to_memory(char *file_name, int open_flags) {
+    struct stat fd_stat; /* this is needed to  the size of the file */
+    int fd = open(file_name, open_flags);
+    int err;
+
+    if (fd < 0) {
+        perror("open");
+        return FALSE;
+    }
+    err = fstat(fd, &fd_stat);
+    if (err < 0) {
+        perror("fstat");
+        return FALSE;
+    }
+
+    map_length = fd_stat.st_size;
+    map_start = mmap(NULL, map_length, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    if (map_start == MAP_FAILED) {
+        map_length = INVALID_FILE;
+        map_start = NULL;
+        perror("mmap");
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+char* elf_header_magic_bytes(Elf32_Ehdr *header) {
+    return (char*)header->e_ident + 1;
+}
+
+bool is_valid_elf32_file(Elf32_Ehdr *header) {
+    if (map_length < 4 || map_length < sizeof(Elf32_Ehdr)) {
+        return FALSE;
+    }
+    
+    if (header->e_ident[0] != ELFMAG0 || strncmp("ELF", elf_header_magic_bytes(header), 3) != 0) {
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+void print_elf_file_info() {
+    Elf32_Ehdr *header = (Elf32_Ehdr*)map_start;
+    if (!is_valid_elf32_file(header)) {
+        printf("File is not a valid elf file.\n");
+        return;
+    }
+
+    printf("Magic bytes: ");
+    fwrite(elf_header_magic_bytes(header), sizeof(byte), 3, stdout);
+    printf("\n");
+    printf("Entry point: 0x%X\n", header->e_entry);
+}
+
+void examine_elf_file() {
+    char filename_buffer[LINE_MAX];
+    printf("Enter file name: ");
+    if (!input_filename(filename_buffer, ARR_LEN(filename_buffer))) {
+        return;
+    }
+    
+    cleanup();
+    if (!map_file_to_memory(filename_buffer, O_RDWR)) {
+        return;
+    }
+
+    print_elf_file_info();
 }
 
 typedef enum INP_LOOP {
@@ -102,9 +184,11 @@ typedef enum INP_LOOP {
 } INP_LOOP;
 
 INP_LOOP toggle_debug_mode_action() {
+    DebugMode = 1 - DebugMode;
     return INP_LOOP_CONTINUE;
 }
 INP_LOOP examine_elf_file_action() {
+    examine_elf_file();
     return INP_LOOP_CONTINUE;
 }
 INP_LOOP quit_action() {
