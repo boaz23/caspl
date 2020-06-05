@@ -330,7 +330,14 @@ void print_section_names() {
         return;
     }
 
-    printf("\n[Nr] Name%*s Address%*s Offset%*s Size%*s Type%*s\n", 16, "", 3, "", 4, "", 5, "", 4, "");
+    printf("\n");
+    dbg_printf("Section names string table header index: %d\n", header->e_shstrndx);
+    if (!DebugMode) {
+        printf("[Nr] Name%*s Address%*s Offset%*s Size%*s Type%*s\n", 16, "", 3, "", 4, "", 5, "", 4, "");
+    }
+    else {
+        printf("[Nr] Name%*s Address%*s Offset%*s Size%*s Type%*s Name-Index\n", 16, "", 3, "", 4, "", 5, "", 4, "");
+    }
 
     section_header = (Elf32_Shdr*)(map_start + header->e_shoff);
     sections_count = header->e_shnum;
@@ -338,15 +345,30 @@ void print_section_names() {
         char* p_sh_str = section_name_string_table + section_header->sh_name;
         int max_read_amount = section_name_string_table_size - (p_sh_str - section_name_string_table);
         fill_next_str_in_string_table(p_sh_str, &section_name, max_read_amount);
-        printf(
-            "[%-2d] %-20s 0x%08X 0x%08X %-9d %-8s\n",
-            i,
-            section_name,
-            section_header->sh_addr,
-            section_header->sh_offset,
-            section_header->sh_size,
-            elf_section_type_string(section_header->sh_type)
-        );
+
+        if (!DebugMode) {
+            printf(
+                "[%-2d] %-20s 0x%08X 0x%08X %-9d %-8s\n",
+                i,
+                section_name,
+                section_header->sh_addr,
+                section_header->sh_offset,
+                section_header->sh_size,
+                elf_section_type_string(section_header->sh_type)
+            );
+        }
+        else {
+            printf(
+                "[%-2d] %-20s 0x%08X 0x%08X %-9d %-8s %-10d\n",
+                i,
+                section_name,
+                section_header->sh_addr,
+                section_header->sh_offset,
+                section_header->sh_size,
+                elf_section_type_string(section_header->sh_type),
+                section_header->sh_name
+            );
+        }
         free(section_name);
         ++section_header;
     }
