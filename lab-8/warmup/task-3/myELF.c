@@ -98,7 +98,6 @@ int input_filename(char *buffer, int len) {
 typedef struct string_table string_table;
 void str_tab_free(string_table *str_tab);
 
-bool mapped;
 int Currentfd;
 int map_length;
 void *map_start;
@@ -108,8 +107,11 @@ Elf32_Shdr *section_headers_table;
 int sections_count;
 string_table *section_names_string_table;
 
+bool is_mapped() {
+    return Currentfd > INVALID_FILE;
+}
+
 void reset_map_values() {
-    mapped = FALSE;
     map_start = NULL;
     map_length = INVALID_LEN;
     Currentfd = INVALID_FILE;
@@ -161,6 +163,7 @@ bool map_file_to_memory_core(char *file_name, int open_flags) {
 }
 
 bool map_file_to_memory(char *file_name, int open_flags) {
+    bool mapped;
     cleanup();
     mapped = map_file_to_memory_core(file_name, open_flags);
     if (!mapped) {
@@ -260,7 +263,7 @@ void examine_elf_file() {
     }
 
     elf_header = (Elf32_Ehdr*)map_start;
-    if (!elf_check_header(elf_header)) {
+    if (!elf_check_header()) {
         return;
     }
     section_headers_table = (Elf32_Shdr*)(map_start + elf_header->e_shoff);
@@ -534,51 +537,39 @@ void relocation_table() {
     }
 }
 
-typedef enum INP_LOOP {
-    INP_LOOP_CONTINUE    = 0,
-    INP_LOOP_BREAK       = 1,
-} INP_LOOP;
-
-INP_LOOP toggle_debug_mode_action() {
+void toggle_debug_mode_action() {
     DebugMode = 1 - DebugMode;
-    return INP_LOOP_CONTINUE;
 }
-INP_LOOP examine_elf_file_action() {
-    examine_elf_file();
-    return INP_LOOP_CONTINUE;
-}
-INP_LOOP print_section_names_action() {
-    if (mapped) {
+void print_section_names_action() {
+    if (is_mapped()) {
         print_section_names();
     }
     else {
         printf("No ELF file is loaded.\n");
     }
-    return INP_LOOP_CONTINUE;
 }
-INP_LOOP print_symbols_action() {
-    if (mapped) {
+void print_symbols_action() {
+    if (is_mapped()) {
         print_symbols();
     }
     else {
         printf("No ELF file is loaded.\n");
     }
-    return INP_LOOP_CONTINUE;
 }
-INP_LOOP relocation_table_action() {
-    if (mapped) {
+void relocation_table_action() {
+    if (is_mapped()) {
         relocation_table();
     }
     else {
         printf("No ELF file is loaded.\n");
     }
-    return INP_LOOP_CONTINUE;
 }
-INP_LOOP quit_action() {
-    return INP_LOOP_BREAK;
+void quit_action() {
+    cleanup();
+    exit(0);
 }
 
-typedef INP_LOOP (*menu_func)();
+typedef void (*menu_func)();
 typedef struct menu_item {
     char *name;
     menu_func func;
@@ -602,13 +593,9 @@ menu_func get_menu_func(menu_item const menu[], int option, int len) {
     return NULL;
 }
 
-INP_LOOP invoke_menu_action(menu_func func) {
-    return func();
-}
-
 menu_item const menu[] = {
     { "Toggle Debug Mode", toggle_debug_mode_action },
-    { "Examine ELF File", examine_elf_file_action },
+    { "Examine ELF File", examine_elf_file },
     { "Print Section Names", print_section_names_action },
     { "Print Symbols", print_symbols_action },
     { "Relocation Tables", relocation_table_action },
@@ -617,8 +604,7 @@ menu_item const menu[] = {
 };
 
 void do_input_loop() {
-    INP_LOOP inp_loop = INP_LOOP_CONTINUE;
-    while (!inp_loop) {
+    while (TRUE) {
         int option = -1;
         print_menu(menu);
         printf("Option: ");
@@ -631,7 +617,7 @@ void do_input_loop() {
             break;
         }
 
-        inp_loop = invoke_menu_action(func);
+        func();
         printf("DONE.\n\n");
     }
 }
