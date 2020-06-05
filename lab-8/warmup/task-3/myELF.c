@@ -13,6 +13,8 @@
 #define ARR_LEN(a) ((sizeof((a))) / (sizeof(*(a))))
 #define is_str_empty(s) ((s)[0] == '\0')
 
+#define print_line() printf("\n");
+
 typedef unsigned char byte;
 typedef enum bool {
     FALSE = 0,
@@ -99,6 +101,7 @@ void *map_start;
 
 Elf32_Ehdr *elf_header;
 Elf32_Shdr *section_headers_table;
+int sections_count;
 char* section_names_string_table;
 int section_names_string_table_size;
 
@@ -110,6 +113,7 @@ void reset_map_values() {
 
     elf_header = NULL;
     section_headers_table = NULL;
+    sections_count = INVALID_LEN;
     section_names_string_table = NULL;
     section_names_string_table_size = INVALID_LEN;
 }
@@ -228,12 +232,12 @@ void print_elf_header_info(char *info_name, char *format, ...) {
     vprintf(format, args);
     va_end(args);
 
-    printf("\n");
+    print_line();
 }
 
 void print_elf_file_info() {
     byte* ident = elf_header->e_ident;
-    printf("\n");
+    print_line();
     print_elf_header_info("Magic bytes", "%.3s", e_ident_magic_bytes_string(ident));
     print_elf_header_info("Data", "%s", e_ident_data_string(ident[EI_DATA]));
     print_elf_header_info("Entry point", "0x%X", elf_header->e_entry);
@@ -261,6 +265,7 @@ void examine_elf_file() {
         return;
     }
     section_headers_table = (Elf32_Shdr*)(map_start + elf_header->e_shoff);
+    sections_count = elf_header->e_shnum;
 
     print_elf_file_info(elf_header);
 }
@@ -338,49 +343,38 @@ char* elf_section_type_string(Elf32_Word section_type) {
 
 void print_section_names() {
     Elf32_Shdr *section_header;
-    int sections_count;
     char *section_name;
     if (!elf_section_names_string_table(elf_header)) {
         return;
     }
 
-    printf("\n");
+    print_line();
     dbg_printf("Section names string table header index: %d\n", elf_header->e_shstrndx);
-    if (!DebugMode) {
-        printf("[Nr] Name%*s Address%*s Offset%*s Size%*s Type%*s\n", 16, "", 3, "", 4, "", 5, "", 4, "");
-    }
-    else {
-        printf("[Nr] Name%*s Address%*s Offset%*s Size%*s Type%*s Name-Index\n", 16, "", 3, "", 4, "", 5, "", 4, "");
-    }
 
-    section_header = (Elf32_Shdr*)(map_start + elf_header->e_shoff);
-    sections_count = elf_header->e_shnum;
+    printf("[Nr] Name%*s Address%*s Offset%*s Size%*s Type%*s", 16, "", 3, "", 4, "", 5, "", 4, "");
+    if (DebugMode) {
+        printf(" Name-Index");
+    }
+    print_line();
+    
+    section_header = get_section_header(0);
     for (int i = 0; i < sections_count; ++i, ++section_header) {
         elf_name_of_section(section_header, &section_name);
 
-        if (!DebugMode) {
-            printf(
-                "[%-2d] %-20s 0x%08X 0x%08X %-9d %-8s\n",
-                i,
-                section_name,
-                section_header->sh_addr,
-                section_header->sh_offset,
-                section_header->sh_size,
-                elf_section_type_string(section_header->sh_type)
-            );
+        printf(
+            "[%-2d] %-20s 0x%08X 0x%08X %-9d %-8s",
+            i,
+            section_name,
+            section_header->sh_addr,
+            section_header->sh_offset,
+            section_header->sh_size,
+            elf_section_type_string(section_header->sh_type)
+        );
+        if (DebugMode) {
+            printf(" %-10d", section_header->sh_name);
         }
-        else {
-            printf(
-                "[%-2d] %-20s 0x%08X 0x%08X %-9d %-8s %-10d\n",
-                i,
-                section_name,
-                section_header->sh_addr,
-                section_header->sh_offset,
-                section_header->sh_size,
-                elf_section_type_string(section_header->sh_type),
-                section_header->sh_name
-            );
-        }
+
+        print_line();
         free(section_name);
     }
 }
@@ -397,7 +391,7 @@ void print_symbol_table(Elf32_Shdr *symbol_section_header) {
     p_symbol_table_string_table = (char*)(map_start + symbol_table_string_table_section_header->sh_offset);
     symbol_table_string_table_size = symbol_table_string_table_section_header->sh_size;
 
-    printf("\n");
+    print_line();
     dbg_printf("Symbol table size: %d (bytes)\n", symbol_section_header->sh_size);
     dbg_printf("Symbol table symbols count: %d\n", symbols_count);
 
@@ -430,7 +424,7 @@ void print_symbol_table(Elf32_Shdr *symbol_section_header) {
         }
         printf(" %-9d %-30s", symbol_entry->st_size, symbol_name);
 
-        printf("\n");
+        print_line();
         free(symbol_name);
     }
 }
@@ -495,7 +489,7 @@ void print_relocation_table(Elf32_Shdr *relocation_section_header) {
             symbol_entry->st_value,
             symbol_name
         );
-        printf("\n");
+        print_line();
     }
 }
 
