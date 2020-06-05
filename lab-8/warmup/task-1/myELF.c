@@ -191,6 +191,20 @@ bool is_valid_elf32_file(Elf32_Ehdr *header) {
     return TRUE;
 }
 
+bool elf_initialize_data(Elf32_Ehdr *header) {
+    byte* ident = header->e_ident;
+    if (!is_valid_elf32_file(header)) {
+        printf("File is not a valid elf file.\n");
+        return FALSE;
+    }
+    if (ident[EI_CLASS] != ELFCLASS32) {
+        printf("Unsupported ELF file\n");
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
 void print_elf_header_info(char *info_name, char *format, ...) {
     va_list args;
     int info_label_len = strlen(info_name);
@@ -203,18 +217,9 @@ void print_elf_header_info(char *info_name, char *format, ...) {
     printf("\n");
 }
 
-void print_elf_file_info() {
-    Elf32_Ehdr *header = (Elf32_Ehdr*)map_start;
+void print_elf_file_info(Elf32_Ehdr *header) {
     byte* ident = header->e_ident;
     char magic[3];
-    if (!is_valid_elf32_file(header)) {
-        printf("File is not a valid elf file.\n");
-        return;
-    }
-    if (ident[EI_CLASS] != ELFCLASS32) {
-        printf("Unsupported ELF file\n");
-        return;
-    }
 
     e_ident_cpy_magic_bytes(ident, magic);
     printf("\n");
@@ -231,6 +236,7 @@ void print_elf_file_info() {
 
 void examine_elf_file() {
     char filename_buffer[LINE_MAX];
+    Elf32_Ehdr *header;
     printf("Enter file name: ");
     if (!input_filename(filename_buffer, ARR_LEN(filename_buffer))) {
         return;
@@ -240,7 +246,11 @@ void examine_elf_file() {
         return;
     }
 
-    print_elf_file_info();
+    header = (Elf32_Ehdr*)map_start;
+    if (!elf_initialize_data(header)) {
+        return;
+    }
+    print_elf_file_info(header);
 }
 
 typedef enum INP_LOOP {
