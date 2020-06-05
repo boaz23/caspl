@@ -96,17 +96,25 @@ int Currentfd = INVALID_FILE;
 int map_length = INVALID_FILE;
 void *map_start = NULL;
 
-void cleanup() {
-    if (mapped) {
-        munmap(map_start, map_length);
-        map_start = NULL;
-        map_length = INVALID_FILE;
-        close(Currentfd);
-        Currentfd = INVALID_FILE;
-    }
+void reset_map_values() {
+    map_start = NULL;
+    map_length = INVALID_FILE;
+    Currentfd = INVALID_FILE;
+    mapped = FALSE;
 }
 
-bool map_file_to_memory(char *file_name, int open_flags) {
+void cleanup() {
+    if (map_start != NULL && map_start != MAP_FAILED) {
+        munmap(map_start, map_length);
+    }
+    if (Currentfd > INVALID_FILE) {
+        close(Currentfd);
+    }
+
+    reset_map_values();
+}
+
+bool map_file_to_memory_core(char *file_name, int open_flags) {
     struct stat fd_stat; /* this is needed to  the size of the file */
     int fd = open(file_name, open_flags);
     int err;
@@ -115,10 +123,11 @@ bool map_file_to_memory(char *file_name, int open_flags) {
         perror("open");
         return FALSE;
     }
+
+    Currentfd = fd;
     err = fstat(fd, &fd_stat);
     if (err < 0) {
         perror("fstat");
-        close(fd);
         return FALSE;
     }
 
@@ -126,12 +135,19 @@ bool map_file_to_memory(char *file_name, int open_flags) {
     map_start = mmap(NULL, map_length, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     if (map_start == MAP_FAILED) {
         perror("mmap");
-        close(fd);
         return FALSE;
     }
-
-    Currentfd = fd;
+    
     return TRUE;
+}
+
+bool map_file_to_memory(char *file_name, int open_flags) {
+    cleanup();
+    mapped = map_file_to_memory_core(file_name, open_flags);
+    if (!mapped) {
+        cleanup();
+    }
+    return mapped;
 }
 
 char* e_ident_magic_bytes(byte *ident) {
@@ -219,9 +235,7 @@ void examine_elf_file() {
         return;
     }
     
-    cleanup();
-    mapped = map_file_to_memory(filename_buffer, O_RDWR);
-    if (!mapped) {
+    if (!map_file_to_memory(filename_buffer, O_RDWR)) {
         return;
     }
 
