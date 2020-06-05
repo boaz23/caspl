@@ -13,6 +13,8 @@
 #define ARR_LEN(a) ((sizeof((a))) / (sizeof(*(a))))
 #define is_str_empty(s) ((s)[0] == '\0')
 
+#define print_line() printf("\n");
+
 typedef unsigned char byte;
 typedef enum bool {
     FALSE = 0,
@@ -91,23 +93,37 @@ int input_filename(char *buffer, int len) {
 // ---------- Task code start ----------
 // -------------------------------------
 #define INVALID_FILE -1
-int Currentfd = INVALID_FILE;
-int map_length = INVALID_FILE;
-void *map_start = NULL;
+#define INVALID_LEN  -1
 
-void cleanup() {
-    if (map_start) {
+bool mapped;
+int Currentfd;
+int map_length;
+void *map_start;
+
+Elf32_Ehdr *elf_header;
+
+void reset_map_values() {
+    mapped = FALSE;
+    map_start = NULL;
+    map_length = INVALID_LEN;
+    Currentfd = INVALID_FILE;
+
+    elf_header = NULL;
+}
+void free_map_resources() {
+    if (map_start != NULL && map_start != MAP_FAILED) {
         munmap(map_start, map_length);
-        map_start = NULL;
-        map_length = INVALID_FILE;
     }
     if (Currentfd > INVALID_FILE) {
         close(Currentfd);
-        Currentfd = INVALID_FILE;
     }
 }
+void cleanup() {
+    free_map_resources();
+    reset_map_values();
+}
 
-bool map_file_to_memory(char *file_name, int open_flags) {
+bool map_file_to_memory_core(char *file_name, int open_flags) {
     struct stat fd_stat; /* this is needed to  the size of the file */
     int fd = open(file_name, open_flags);
     int err;
@@ -116,6 +132,8 @@ bool map_file_to_memory(char *file_name, int open_flags) {
         perror("open");
         return FALSE;
     }
+
+    Currentfd = fd;
     err = fstat(fd, &fd_stat);
     if (err < 0) {
         perror("fstat");
@@ -125,42 +143,48 @@ bool map_file_to_memory(char *file_name, int open_flags) {
     map_length = fd_stat.st_size;
     map_start = mmap(NULL, map_length, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     if (map_start == MAP_FAILED) {
-        map_length = INVALID_FILE;
-        map_start = NULL;
         perror("mmap");
         return FALSE;
     }
-
+    
     return TRUE;
 }
 
-char* e_ident_magic_bytes(byte *ident) {
-    return (char*)ident + 1;
-}
-void e_ident_cpy_magic_bytes(byte *ident, char *magic) {
-    memcpy(magic, e_ident_magic_bytes(ident), 3);
+bool map_file_to_memory(char *file_name, int open_flags) {
+    cleanup();
+    mapped = map_file_to_memory_core(file_name, open_flags);
+    if (!mapped) {
+        cleanup();
+    }
+    return mapped;
 }
 
-char* e_ident_data(byte *ident) {
-    switch (ident[EI_DATA]) {
-        case ELFDATANONE:
-            return NULL;
-        case ELFDATA2LSB:
-            return "2's complement, little endian";
-        case ELFDATA2MSB:
-            return "2's complement, big endian";
-        default:
-            return NULL;
+char* e_ident_magic_bytes_string(byte *ident) {
+    return (char*)ident + 1;
+}
+
+char* e_ident_data_string(byte data) {
+    char *data_strings[] = {
+        "",
+        "2's complement, little endian",
+        "2's complement, big endian"
+    };
+    int index = data;
+    if (ELFDATANONE <= index && index <= ELFDATA2MSB) {
+        return data_strings[index];
+    }
+    else {
+        return "";
     }
 }
 
-bool is_valid_elf32_file(Elf32_Ehdr *header) {
-    byte* ident = header->e_ident;
+bool is_valid_elf32_file() {
+    byte* ident = elf_header->e_ident;
     if (map_length < 4 || map_length < sizeof(Elf32_Ehdr)) {
         return FALSE;
     }
     
-    if (ident[EI_MAG0] != ELFMAG0 || strncmp("ELF", e_ident_magic_bytes(ident), 3) != 0) {
+    if (ident[EI_MAG0] != ELFMAG0 || strncmp("ELF", e_ident_magic_bytes_string(ident), 3) != 0) {
         return FALSE;
     }
 
@@ -168,6 +192,20 @@ bool is_valid_elf32_file(Elf32_Ehdr *header) {
         return FALSE;
     }
     if (ident[EI_DATA] != ELFDATA2LSB && ident[EI_DATA] != ELFDATA2MSB) {
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
+bool elf_check_header() {
+    byte* ident = elf_header->e_ident;
+    if (!is_valid_elf32_file(elf_header)) {
+        printf("File is not a valid elf file.\n");
+        return FALSE;
+    }
+    if (ident[EI_CLASS] != ELFCLASS32) {
+        printf("Unsupported ELF file\n");
         return FALSE;
     }
 
@@ -183,33 +221,21 @@ void print_elf_header_info(char *info_name, char *format, ...) {
     vprintf(format, args);
     va_end(args);
 
-    printf("\n");
+    print_line();
 }
 
 void print_elf_file_info() {
-    Elf32_Ehdr *header = (Elf32_Ehdr*)map_start;
-    byte* ident = header->e_ident;
-    char magic[3];
-    if (!is_valid_elf32_file(header)) {
-        printf("File is not a valid elf file.\n");
-        return;
-    }
-    if (ident[EI_CLASS] != ELFCLASS32) {
-        printf("Unsupported ELF file\n");
-        return;
-    }
-
-    e_ident_cpy_magic_bytes(ident, magic);
-    printf("\n");
-    print_elf_header_info("Magic bytes", "%s", magic);
-    print_elf_header_info("Data", "%s", e_ident_data(ident));
-    print_elf_header_info("Entry point", "0x%X", header->e_entry);
-    print_elf_header_info("Section headers table offset", "0x%X", header->e_shoff);
-    print_elf_header_info("Number of section header entries", "%d", header->e_shnum);
-    print_elf_header_info("Size of section header entry", "%d (bytes)", header->e_shentsize);
-    print_elf_header_info("Program headers table offset", "0x%X", header->e_phoff);
-    print_elf_header_info("Number of program header entries", "%d", header->e_phnum);
-    print_elf_header_info("Size of program header entry", "%d (bytes)", header->e_phentsize);
+    byte* ident = elf_header->e_ident;
+    print_line();
+    print_elf_header_info("Magic bytes", "%.3s", e_ident_magic_bytes_string(ident));
+    print_elf_header_info("Data", "%s", e_ident_data_string(ident[EI_DATA]));
+    print_elf_header_info("Entry point", "0x%X", elf_header->e_entry);
+    print_elf_header_info("Section headers table offset", "0x%X", elf_header->e_shoff);
+    print_elf_header_info("Number of section header entries", "%d", elf_header->e_shnum);
+    print_elf_header_info("Size of section header entry", "%d (bytes)", elf_header->e_shentsize);
+    print_elf_header_info("Program headers table offset", "0x%X", elf_header->e_phoff);
+    print_elf_header_info("Number of program header entries", "%d", elf_header->e_phnum);
+    print_elf_header_info("Size of program header entry", "%d (bytes)", elf_header->e_phentsize);
 }
 
 void examine_elf_file() {
@@ -219,8 +245,12 @@ void examine_elf_file() {
         return;
     }
     
-    cleanup();
     if (!map_file_to_memory(filename_buffer, O_RDWR)) {
+        return;
+    }
+
+    elf_header = (Elf32_Ehdr*)map_start;
+    if (!elf_check_header()) {
         return;
     }
 
@@ -300,7 +330,8 @@ void do_input_loop() {
 }
 
 int main(int argc, char *argv[]) {
-    do_input_loop(menu);
+    reset_map_values();
+    do_input_loop();
     cleanup();
     return 0;
 }
