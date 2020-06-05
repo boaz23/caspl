@@ -95,7 +95,6 @@ int input_filename(char *buffer, int len) {
 #define INVALID_FILE -1
 #define INVALID_LEN  -1
 
-bool mapped;
 int Currentfd;
 int map_length;
 void *map_start;
@@ -103,7 +102,6 @@ void *map_start;
 Elf32_Ehdr *elf_header;
 
 void reset_map_values() {
-    mapped = FALSE;
     map_start = NULL;
     map_length = INVALID_LEN;
     Currentfd = INVALID_FILE;
@@ -151,6 +149,7 @@ bool map_file_to_memory_core(char *file_name, int open_flags) {
 }
 
 bool map_file_to_memory(char *file_name, int open_flags) {
+    bool mapped;
     cleanup();
     mapped = map_file_to_memory_core(file_name, open_flags);
     if (!mapped) {
