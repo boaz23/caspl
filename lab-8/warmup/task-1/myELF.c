@@ -102,15 +102,16 @@ void reset_map_values() {
     Currentfd = INVALID_FILE;
     mapped = FALSE;
 }
-
-void cleanup() {
+void free_map_resources() {
     if (map_start != NULL && map_start != MAP_FAILED) {
         munmap(map_start, map_length);
     }
     if (Currentfd > INVALID_FILE) {
         close(Currentfd);
     }
-
+}
+void cleanup() {
+    free_map_resources();
     reset_map_values();
 }
 
