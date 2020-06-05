@@ -1,22 +1,22 @@
 #include <stdlib.h>
 #include <stdio.h>
+#include <stdarg.h>
+#include <string.h>
+#include <unistd.h>
 #include <sys/mman.h>
 #include <elf.h>
-
-#define dbg_out stderr
+#include <errno.h>
 
 #define ARR_LEN(a) ((sizeof((a))) / (sizeof(*(a))))
 #define is_str_empty(s) ((s)[0] == '\0')
-
-typedef enum bool bool;
 
 typedef enum bool {
     FALSE = 0,
     TRUE  = 1,
 } bool;
 
-int Currentfd = -1;
-void *map_start = NULL;
+#define LINE_MAX 256
+#define dbg_out stderr
 bool DebugMode = FALSE;
 
 bool dbg_printf(char const *f, ...) {
@@ -83,6 +83,91 @@ int input_filename(char *buffer, int len) {
     return 1;
 }
 
+int Currentfd = -1;
+int map_length = -1;
+void *map_start = NULL;
+
+void cleanup() {
+    if (map_start) {
+        munmap(map_start, map_length);
+    }
+    if (Currentfd >= 0) {
+        close(Currentfd);
+    }
+}
+
+typedef enum INP_LOOP {
+    INP_LOOP_CONTINUE    = 0,
+    INP_LOOP_BREAK       = 1,
+} INP_LOOP;
+
+INP_LOOP toggle_debug_mode_action() {
+    return INP_LOOP_CONTINUE;
+}
+INP_LOOP examine_elf_file_action() {
+    return INP_LOOP_CONTINUE;
+}
+INP_LOOP quit_action() {
+    return INP_LOOP_BREAK;
+}
+
+typedef INP_LOOP (*menu_func)();
+typedef struct menu_item {
+    char *name;
+    menu_func func;
+} menu_item;
+
+void print_menu(menu_item const menu[]) {
+    menu_item const *current_menu_item = menu;
+    int i = 0;
+    while (current_menu_item->name != NULL) {
+        printf("%d-%s\n", i, current_menu_item->name);
+        ++current_menu_item;
+        ++i;
+    }
+}
+
+menu_func get_menu_func(menu_item const menu[], int option, int len) {
+    if (0 <= option && option < len) {
+        return menu[option].func;
+    }
+
+    return NULL;
+}
+
+INP_LOOP invoke_menu_action(menu_func func) {
+    return func();
+}
+
+menu_item const menu[] = {
+    { "Toggle Debug Mode", toggle_debug_mode_action },
+    { "Examine ELF File", examine_elf_file_action },
+    { "Quit", quit_action },
+    { NULL, NULL }
+};
+
+void do_input_loop() {
+    INP_LOOP inp_loop = INP_LOOP_CONTINUE;
+    while (!inp_loop) {
+        int option = -1;
+        print_menu(menu);
+        printf("Option: ");
+        if (!input_int_dec(&option)) {
+            continue;
+        }
+
+        menu_func func = get_menu_func(menu, option, ARR_LEN(menu));
+        if (func == NULL) {
+            break;
+        }
+
+        inp_loop = invoke_menu_action(func);
+        printf("DONE.\n\n");
+    }
+}
+
 int main(int argc, char *argv[]) {
+    do_input_loop(menu);
+    cleanup();
     return 0;
 }
