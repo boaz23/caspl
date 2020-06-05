@@ -357,7 +357,7 @@ void print_section_names() {
     }
     print_line();
     
-    section_header = get_section_header(0);
+    section_header = section_headers_table;
     for (int i = 0; i < sections_count; ++i, ++section_header) {
         elf_name_of_section(section_header, &section_name);
 
@@ -431,13 +431,11 @@ void print_symbol_table(Elf32_Shdr *symbol_section_header) {
 
 void print_symbols() {
     Elf32_Shdr *section_header;
-    int sections_count;
     if (!elf_section_names_string_table(elf_header)) {
         return;
     }
 
-    section_header = (Elf32_Shdr*)(map_start + elf_header->e_shoff);
-    sections_count = elf_header->e_shnum;
+    section_header = section_headers_table;
     for (int i = 0; i < sections_count; ++i, ++section_header) {
         if (section_header->sh_type != SHT_SYMTAB) {
             continue;
@@ -495,13 +493,11 @@ void print_relocation_table(Elf32_Shdr *relocation_section_header) {
 
 void relocation_table() {
     Elf32_Shdr *section_header;
-    int sections_count;
     if (!elf_section_names_string_table(elf_header)) {
         return;
     }
 
-    section_header = (Elf32_Shdr*)(map_start + elf_header->e_shoff);
-    sections_count = elf_header->e_shnum;
+    section_header = section_headers_table;
     for (int i = 0; i < sections_count; ++i, ++section_header) {
         if (section_header->sh_type != SHT_REL) {
             continue;
