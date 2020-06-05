@@ -94,6 +94,10 @@ int input_filename(char *buffer, int len) {
 // -------------------------------------
 #define INVALID_FILE -1
 #define INVALID_LEN  -1
+
+typedef struct string_table string_table;
+void str_tab_free(string_table *str_tab);
+
 bool mapped;
 int Currentfd;
 int map_length;
@@ -102,8 +106,7 @@ void *map_start;
 Elf32_Ehdr *elf_header;
 Elf32_Shdr *section_headers_table;
 int sections_count;
-char* section_names_string_table;
-int section_names_string_table_size;
+string_table *section_names_string_table;
 
 void reset_map_values() {
     mapped = FALSE;
@@ -115,7 +118,6 @@ void reset_map_values() {
     section_headers_table = NULL;
     sections_count = INVALID_LEN;
     section_names_string_table = NULL;
-    section_names_string_table_size = INVALID_LEN;
 }
 void free_map_resources() {
     if (map_start != NULL && map_start != MAP_FAILED) {
@@ -124,14 +126,11 @@ void free_map_resources() {
     if (Currentfd > INVALID_FILE) {
         close(Currentfd);
     }
+    str_tab_free(section_names_string_table);
 }
 void cleanup() {
     free_map_resources();
     reset_map_values();
-}
-
-Elf32_Shdr* get_section_header(int index) {
-    return &section_headers_table[index];
 }
 
 bool map_file_to_memory_core(char *file_name, int open_flags) {
@@ -270,17 +269,8 @@ void examine_elf_file() {
     print_elf_file_info(elf_header);
 }
 
-bool elf_section_names_string_table() {
-    Elf32_Shdr *section_names_string_table_header;
-    if (elf_header->e_shstrndx == SHN_UNDEF) {
-        printf("The ELF file does not have a section names string table");
-        return FALSE;
-    }
-
-    section_names_string_table_header = get_section_header(elf_header->e_shstrndx);
-    section_names_string_table = (char*)(map_start + section_names_string_table_header->sh_offset);
-    section_names_string_table_size = section_names_string_table_header->sh_size;
-    return TRUE;
+Elf32_Shdr* get_section_header(int index) {
+    return &section_headers_table[index];
 }
 
 void fill_next_str_in_string_table(char *p_str_table, char **p_buf, int max_read_amount, int *len) {
@@ -310,11 +300,53 @@ void fill_next_str_in_string_table(char *p_str_table, char **p_buf, int max_read
     }
 }
 
-void elf_name_of_section(Elf32_Shdr *section_header, char **name) {
-    char* p_sh_str = section_names_string_table + section_header->sh_name;
-    int max_read_amount = section_names_string_table_size - (p_sh_str - section_names_string_table);
+typedef struct string_table {
+    char *p_str_tab;
+    int size;
+} string_table;
+
+string_table* str_tab_init_from_section_index(int index) {
+    Elf32_Shdr* section_header = get_section_header(index);
+    string_table *str_tab = malloc(sizeof(string_table));
+    str_tab->p_str_tab = (char*)(map_start + section_header->sh_offset),
+    str_tab->size = section_header->sh_size;
+    return str_tab;
+}
+
+void str_tab_free(string_table* str_tab) {
+    if (str_tab) {
+        free(str_tab);
+    }
+}
+
+char* str_tab_get_name(string_table *str_tab, int index) {
+    char *symbol_name;
     int len;
-    fill_next_str_in_string_table(p_sh_str, name, max_read_amount, &len);
+    char* p_sym_str;
+    int max_read_amount;
+
+    p_sym_str = str_tab->p_str_tab + index;
+    max_read_amount = str_tab->size - (p_sym_str - str_tab->p_str_tab);
+    fill_next_str_in_string_table(p_sym_str, &symbol_name, max_read_amount, &len);
+    return symbol_name;
+}
+
+bool elf_section_names_string_table() {
+    if (section_names_string_table) {
+        return TRUE;
+    }
+    
+    if (elf_header->e_shstrndx == SHN_UNDEF) {
+        printf("The ELF file does not have a section names string table");
+        return FALSE;
+    }
+
+    section_names_string_table = str_tab_init_from_section_index(elf_header->e_shstrndx);
+    return TRUE;
+}
+
+char* elf_name_of_section(Elf32_Shdr *section_header) {
+    return str_tab_get_name(section_names_string_table, section_header->sh_name);
 }
 
 char* elf_section_type_string(Elf32_Word section_type) {
@@ -343,8 +375,7 @@ char* elf_section_type_string(Elf32_Word section_type) {
 
 void print_section_names() {
     Elf32_Shdr *section_header;
-    char *section_name;
-    if (!elf_section_names_string_table(elf_header)) {
+    if (!elf_section_names_string_table()) {
         return;
     }
 
@@ -359,8 +390,7 @@ void print_section_names() {
     
     section_header = section_headers_table;
     for (int i = 0; i < sections_count; ++i, ++section_header) {
-        elf_name_of_section(section_header, &section_name);
-
+        char *section_name = elf_name_of_section(section_header);
         printf(
             "[%-2d] %-20s 0x%08X 0x%08X %-9d %-8s",
             i,
@@ -381,15 +411,11 @@ void print_section_names() {
 
 void print_symbol_table(Elf32_Shdr *symbol_section_header) {
     Elf32_Sym *symbol_entry;
-    Elf32_Shdr *symbol_table_string_table_section_header;
-    char *p_symbol_table_string_table;
-    int symbol_table_string_table_size;
+    string_table *symbol_table_str_tab;
     int symbols_count;
 
     symbols_count = symbol_section_header->sh_size / symbol_section_header->sh_entsize;
-    symbol_table_string_table_section_header = get_section_header(symbol_section_header->sh_link);
-    p_symbol_table_string_table = (char*)(map_start + symbol_table_string_table_section_header->sh_offset);
-    symbol_table_string_table_size = symbol_table_string_table_section_header->sh_size;
+    symbol_table_str_tab = str_tab_init_from_section_index(symbol_section_header->sh_link);
 
     print_line();
     dbg_printf("Symbol table size: %d (bytes)\n", symbol_section_header->sh_size);
@@ -403,11 +429,7 @@ void print_symbol_table(Elf32_Shdr *symbol_section_header) {
         char *section_name;
         char *symbol_name;
 
-        int len;
-        char* p_sym_str = p_symbol_table_string_table + symbol_entry->st_name;
-        int max_read_amount = symbol_table_string_table_size - (p_sym_str - p_symbol_table_string_table);
-        fill_next_str_in_string_table(p_sym_str, &symbol_name, max_read_amount, &len);
-        
+        symbol_name = str_tab_get_name(symbol_table_str_tab, symbol_entry->st_name);
         printf("%-3d 0x%08X ", i, symbol_entry->st_value);
         switch (symbol_entry->st_shndx) {
             case SHN_ABS:
@@ -418,7 +440,7 @@ void print_symbol_table(Elf32_Shdr *symbol_section_header) {
                 break;
             default:
                 section_header_of_symbol = get_section_header(symbol_entry->st_shndx);
-                elf_name_of_section(section_header_of_symbol, &section_name);
+                section_name = elf_name_of_section(section_header_of_symbol);
                 printf("%-6d %-20s", symbol_entry->st_shndx, section_name);
                 break;
         }
@@ -427,11 +449,13 @@ void print_symbol_table(Elf32_Shdr *symbol_section_header) {
         print_line();
         free(symbol_name);
     }
+
+    str_tab_free(symbol_table_str_tab);
 }
 
 void print_symbols() {
     Elf32_Shdr *section_header;
-    if (!elf_section_names_string_table(elf_header)) {
+    if (!elf_section_names_string_table()) {
         return;
     }
 
@@ -454,31 +478,28 @@ void print_relocation_table(Elf32_Shdr *relocation_section_header) {
     char *relocation_section_name;
     int relocations_count;
     
-    Elf32_Shdr *symbol_section_header;
-    Elf32_Shdr *symbol_table_string_table_section_header;
-    char *p_symbol_table_string_table;
-    int symbol_table_string_table_size;
+    Elf32_Shdr *symbol_table_section_header;
+    Elf32_Sym *symbol_table;
+    string_table *symbol_table_str_tab;
 
     relocations_count = relocation_section_header->sh_size / relocation_section_header->sh_entsize;
+    symbol_table_section_header = get_section_header(relocation_section_header->sh_link);
+    symbol_table = (Elf32_Sym*)(map_start + symbol_table_section_header->sh_offset);
+    symbol_table_str_tab = str_tab_init_from_section_index(symbol_table_section_header->sh_link);
 
-    symbol_section_header = get_section_header(relocation_section_header->sh_link);
-    symbol_table_string_table_section_header = get_section_header(symbol_section_header->sh_link);
-    p_symbol_table_string_table = (char*)(map_start + symbol_table_string_table_section_header->sh_offset);
-    symbol_table_string_table_size = symbol_table_string_table_section_header->sh_size;
-
-    elf_name_of_section(relocation_section_header, &relocation_section_name);
-    printf("\nRelocation section '%s' at offset 0x%X contains 8 entries:\n", relocation_section_name, relocation_section_header->sh_offset);
+    relocation_section_name = elf_name_of_section(relocation_section_header);
+    printf(
+        "\nRelocation section '%s' at offset 0x%X contains %d entries:\n",
+        relocation_section_name,
+        relocation_section_header->sh_offset,
+        relocations_count
+    );
     printf("Offset%*s Info%*s Type Sym-Value%*s Sym-Name%*s\n", 4, "", 6, "", 1, "", 11, "");
 
     relocation_entry = (Elf32_Rel*)(map_start + relocation_section_header->sh_offset);
     for (int i = 0; i < relocations_count; ++i, ++relocation_entry) {
-        Elf32_Sym *symbol_entry = (Elf32_Sym*)(map_start + symbol_section_header->sh_offset + (ELF32_R_SYM(relocation_entry->r_info) * symbol_section_header->sh_entsize));
-        char *symbol_name;
-        int len;
-        char* p_sym_str = p_symbol_table_string_table + symbol_entry->st_name;
-        int max_read_amount = symbol_table_string_table_size - (p_sym_str - p_symbol_table_string_table);
-        fill_next_str_in_string_table(p_sym_str, &symbol_name, max_read_amount, &len);
-
+        Elf32_Sym *symbol_entry = &symbol_table[ELF32_R_SYM(relocation_entry->r_info)];
+        char *symbol_name = str_tab_get_name(symbol_table_str_tab, symbol_entry->st_name);
         printf(
             "0x%08X 0x%08X %-4d 0x%08X %-20s",
             relocation_entry->r_offset,
@@ -489,11 +510,13 @@ void print_relocation_table(Elf32_Shdr *relocation_section_header) {
         );
         print_line();
     }
+
+    str_tab_free(symbol_table_str_tab);
 }
 
 void relocation_table() {
     Elf32_Shdr *section_header;
-    if (!elf_section_names_string_table(elf_header)) {
+    if (!elf_section_names_string_table()) {
         return;
     }
 
@@ -615,7 +638,7 @@ void do_input_loop() {
 
 int main(int argc, char *argv[]) {
     reset_map_values();
-    do_input_loop(menu);
+    do_input_loop();
     cleanup();
     return 0;
 }
