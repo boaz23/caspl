@@ -92,14 +92,15 @@ int input_filename(char *buffer, int len) {
 // -------------------------------------
 #define INVALID_FILE -1
 #define INVALID_LEN  -1
-bool mapped = FALSE;
-int Currentfd = INVALID_FILE;
-int map_length = INVALID_LEN;
-void *map_start = NULL;
+bool mapped;
+int Currentfd;
+int map_length;
+void *map_start;
 
-Elf32_Ehdr *elf_header = NULL;
-char* section_name_string_table = NULL;
-int section_name_string_table_size = INVALID_LEN;
+Elf32_Ehdr *elf_header;
+Elf32_Shdr *section_headers_table;
+char* section_names_string_table;
+int section_names_string_table_size;
 
 void reset_map_values() {
     mapped = FALSE;
@@ -108,8 +109,9 @@ void reset_map_values() {
     Currentfd = INVALID_FILE;
 
     elf_header = NULL;
-    section_name_string_table = NULL;
-    section_name_string_table_size = INVALID_LEN;
+    section_headers_table = NULL;
+    section_names_string_table = NULL;
+    section_names_string_table_size = INVALID_LEN;
 }
 void free_map_resources() {
     if (map_start != NULL && map_start != MAP_FAILED) {
@@ -122,6 +124,10 @@ void free_map_resources() {
 void cleanup() {
     free_map_resources();
     reset_map_values();
+}
+
+Elf32_Shdr* get_section_header(int index) {
+    return &section_headers_table[index];
 }
 
 bool map_file_to_memory_core(char *file_name, int open_flags) {
@@ -160,29 +166,27 @@ bool map_file_to_memory(char *file_name, int open_flags) {
     return mapped;
 }
 
-Elf32_Shdr* get_section_header(int section_header_index) {
-    return (Elf32_Shdr*)(map_start + elf_header->e_shoff + (section_header_index * elf_header->e_shentsize));
-}
-
 char* e_ident_magic_bytes_string(byte *ident) {
     return (char*)ident + 1;
 }
 
-char* e_ident_data_string(byte *ident) {
-    switch (ident[EI_DATA]) {
-        case ELFDATANONE:
-            return NULL;
-        case ELFDATA2LSB:
-            return "2's complement, little endian";
-        case ELFDATA2MSB:
-            return "2's complement, big endian";
-        default:
-            return NULL;
+char* e_ident_data_string(byte data) {
+    char *data_strings[] = {
+        "",
+        "2's complement, little endian",
+        "2's complement, big endian"
+    };
+    int index = data;
+    if (ELFDATANONE <= index && index <= ELFDATA2MSB) {
+        return data_strings[index];
+    }
+    else {
+        return "";
     }
 }
 
-bool is_valid_elf32_file(Elf32_Ehdr *header) {
-    byte* ident = header->e_ident;
+bool is_valid_elf32_file() {
+    byte* ident = elf_header->e_ident;
     if (map_length < 4 || map_length < sizeof(Elf32_Ehdr)) {
         return FALSE;
     }
@@ -201,9 +205,9 @@ bool is_valid_elf32_file(Elf32_Ehdr *header) {
     return TRUE;
 }
 
-bool elf_check_header(Elf32_Ehdr *header) {
-    byte* ident = header->e_ident;
-    if (!is_valid_elf32_file(header)) {
+bool elf_check_header() {
+    byte* ident = elf_header->e_ident;
+    if (!is_valid_elf32_file(elf_header)) {
         printf("File is not a valid elf file.\n");
         return FALSE;
     }
@@ -227,19 +231,18 @@ void print_elf_header_info(char *info_name, char *format, ...) {
     printf("\n");
 }
 
-void print_elf_file_info(Elf32_Ehdr *header) {
-    byte* ident = header->e_ident;
-    
+void print_elf_file_info() {
+    byte* ident = elf_header->e_ident;
     printf("\n");
     print_elf_header_info("Magic bytes", "%.3s", e_ident_magic_bytes_string(ident));
-    print_elf_header_info("Data", "%s", e_ident_data_string(ident));
-    print_elf_header_info("Entry point", "0x%X", header->e_entry);
-    print_elf_header_info("Section headers table offset", "0x%X", header->e_shoff);
-    print_elf_header_info("Number of section header entries", "%d", header->e_shnum);
-    print_elf_header_info("Size of section header entry", "%d (bytes)", header->e_shentsize);
-    print_elf_header_info("Program headers table offset", "0x%X", header->e_phoff);
-    print_elf_header_info("Number of program header entries", "%d", header->e_phnum);
-    print_elf_header_info("Size of program header entry", "%d (bytes)", header->e_phentsize);
+    print_elf_header_info("Data", "%s", e_ident_data_string(ident[EI_DATA]));
+    print_elf_header_info("Entry point", "0x%X", elf_header->e_entry);
+    print_elf_header_info("Section headers table offset", "0x%X", elf_header->e_shoff);
+    print_elf_header_info("Number of section header entries", "%d", elf_header->e_shnum);
+    print_elf_header_info("Size of section header entry", "%d (bytes)", elf_header->e_shentsize);
+    print_elf_header_info("Program headers table offset", "0x%X", elf_header->e_phoff);
+    print_elf_header_info("Number of program header entries", "%d", elf_header->e_phnum);
+    print_elf_header_info("Size of program header entry", "%d (bytes)", elf_header->e_phentsize);
 }
 
 void examine_elf_file() {
@@ -257,19 +260,21 @@ void examine_elf_file() {
     if (!elf_check_header(elf_header)) {
         return;
     }
+    section_headers_table = (Elf32_Shdr*)(map_start + elf_header->e_shoff);
+
     print_elf_file_info(elf_header);
 }
 
-bool elf_section_names_string_table(Elf32_Ehdr *header) {
+bool elf_section_names_string_table() {
     Elf32_Shdr *section_names_string_table_header;
-    if (header->e_shstrndx == SHN_UNDEF) {
+    if (elf_header->e_shstrndx == SHN_UNDEF) {
         printf("The ELF file does not have a section names string table");
         return FALSE;
     }
 
-    section_names_string_table_header = get_section_header(header->e_shstrndx);
-    section_name_string_table = (char*)(map_start + section_names_string_table_header->sh_offset);
-    section_name_string_table_size = section_names_string_table_header->sh_size;
+    section_names_string_table_header = get_section_header(elf_header->e_shstrndx);
+    section_names_string_table = (char*)(map_start + section_names_string_table_header->sh_offset);
+    section_names_string_table_size = section_names_string_table_header->sh_size;
     return TRUE;
 }
 
@@ -301,54 +306,46 @@ void fill_next_str_in_string_table(char *p_str_table, char **p_buf, int max_read
 }
 
 void elf_name_of_section(Elf32_Shdr *section_header, char **name) {
-    char* p_sh_str = section_name_string_table + section_header->sh_name;
-    int max_read_amount = section_name_string_table_size - (p_sh_str - section_name_string_table);
+    char* p_sh_str = section_names_string_table + section_header->sh_name;
+    int max_read_amount = section_names_string_table_size - (p_sh_str - section_names_string_table);
     int len;
     fill_next_str_in_string_table(p_sh_str, name, max_read_amount, &len);
 }
 
 char* elf_section_type_string(Elf32_Word section_type) {
-    switch (section_type) {
-        case SHT_NULL:
-            return "NULL";
-        case SHT_PROGBITS:
-            return "PROGBITS";
-        case SHT_SYMTAB:
-            return "SYMTAB";
-        case SHT_STRTAB:
-            return "STRTAB";
-        case SHT_RELA:
-            return "RELA";
-        case SHT_HASH:
-            return "HASH";
-        case SHT_DYNAMIC:
-            return "DYNAMIC";
-        case SHT_NOTE:
-            return "NOTE";
-        case SHT_NOBITS:
-            return "NOBITS";
-        case SHT_REL:
-            return "REL";
-        case SHT_SHLIB:
-            return "SHLIB";
-        case SHT_DYNSYM:
-            return "DYNSYM";
-        default:
-            return "";
+    char *type_strings[] = {
+        "NULL",
+        "PROGBITS",
+        "SYMTAB",
+        "STRTAB",
+        "RELA",
+        "HASH",
+        "DYNAMIC",
+        "NOTE",
+        "NOBITS",
+        "REL",
+        "SHLIB",
+        "DYNSYM",
+    };
+    int index = section_type;
+    if (SHT_NULL <= index && index <= SHT_DYNSYM) {
+        return type_strings[index];
+    }
+    else {
+        return "";
     }
 }
 
 void print_section_names() {
-    Elf32_Ehdr *header = elf_header;
     Elf32_Shdr *section_header;
     int sections_count;
     char *section_name;
-    if (!elf_section_names_string_table(header)) {
+    if (!elf_section_names_string_table(elf_header)) {
         return;
     }
 
     printf("\n");
-    dbg_printf("Section names string table header index: %d\n", header->e_shstrndx);
+    dbg_printf("Section names string table header index: %d\n", elf_header->e_shstrndx);
     if (!DebugMode) {
         printf("[Nr] Name%*s Address%*s Offset%*s Size%*s Type%*s\n", 16, "", 3, "", 4, "", 5, "", 4, "");
     }
@@ -356,8 +353,8 @@ void print_section_names() {
         printf("[Nr] Name%*s Address%*s Offset%*s Size%*s Type%*s Name-Index\n", 16, "", 3, "", 4, "", 5, "", 4, "");
     }
 
-    section_header = (Elf32_Shdr*)(map_start + header->e_shoff);
-    sections_count = header->e_shnum;
+    section_header = (Elf32_Shdr*)(map_start + elf_header->e_shoff);
+    sections_count = elf_header->e_shnum;
     for (int i = 0; i < sections_count; ++i, ++section_header) {
         elf_name_of_section(section_header, &section_name);
 
@@ -627,6 +624,7 @@ void do_input_loop() {
 }
 
 int main(int argc, char *argv[]) {
+    reset_map_values();
     do_input_loop(menu);
     cleanup();
     return 0;
