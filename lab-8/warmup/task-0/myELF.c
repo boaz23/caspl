@@ -134,33 +134,82 @@ bool map_file_to_memory(char *file_name, int open_flags) {
     return TRUE;
 }
 
-char* elf_header_magic_bytes(Elf32_Ehdr *header) {
-    return (char*)header->e_ident + 1;
+char* e_ident_magic_bytes(byte *ident) {
+    return (char*)ident + 1;
+}
+void e_ident_cpy_magic_bytes(byte *ident, char *magic) {
+    memcpy(magic, e_ident_magic_bytes(ident), 3);
+}
+
+char* e_ident_data(byte *ident) {
+    switch (ident[EI_DATA]) {
+        case ELFDATANONE:
+            return NULL;
+        case ELFDATA2LSB:
+            return "2's complement, little endian";
+        case ELFDATA2MSB:
+            return "2's complement, big endian";
+        default:
+            return NULL;
+    }
 }
 
 bool is_valid_elf32_file(Elf32_Ehdr *header) {
+    byte* ident = header->e_ident;
     if (map_length < 4 || map_length < sizeof(Elf32_Ehdr)) {
         return FALSE;
     }
     
-    if (header->e_ident[0] != ELFMAG0 || strncmp("ELF", elf_header_magic_bytes(header), 3) != 0) {
+    if (ident[EI_MAG0] != ELFMAG0 || strncmp("ELF", e_ident_magic_bytes(ident), 3) != 0) {
+        return FALSE;
+    }
+
+    if (ident[EI_CLASS] != ELFCLASS32 && ident[EI_CLASS] != ELFCLASS64) {
+        return FALSE;
+    }
+    if (ident[EI_DATA] != ELFDATA2LSB && ident[EI_DATA] != ELFDATA2MSB) {
         return FALSE;
     }
 
     return TRUE;
 }
 
+void print_elf_header_info(char *info_name, char *format, ...) {
+    va_list args;
+    int info_label_len = strlen(info_name);
+    printf("%s:%*s", info_name, 35 - info_label_len, "");
+
+    va_start(args, format);
+    vprintf(format, args);
+    va_end(args);
+
+    printf("\n");
+}
+
 void print_elf_file_info() {
     Elf32_Ehdr *header = (Elf32_Ehdr*)map_start;
+    byte* ident = header->e_ident;
+    char magic[3];
     if (!is_valid_elf32_file(header)) {
         printf("File is not a valid elf file.\n");
         return;
     }
+    if (ident[EI_CLASS] != ELFCLASS32) {
+        printf("Unsupported ELF file\n");
+        return;
+    }
 
-    printf("Magic bytes: ");
-    fwrite(elf_header_magic_bytes(header), sizeof(byte), 3, stdout);
+    e_ident_cpy_magic_bytes(ident, magic);
     printf("\n");
-    printf("Entry point: 0x%X\n", header->e_entry);
+    print_elf_header_info("Magic bytes", "%s", magic);
+    print_elf_header_info("Data", "%s", e_ident_data(ident));
+    print_elf_header_info("Entry point", "0x%X", header->e_entry);
+    print_elf_header_info("Section headers table offset", "0x%X", header->e_shoff);
+    print_elf_header_info("Number of section header entries", "%d", header->e_shnum);
+    print_elf_header_info("Size of section header entry", "%d (bytes)", header->e_shentsize);
+    print_elf_header_info("Program headers table offset", "0x%X", header->e_phoff);
+    print_elf_header_info("Number of program header entries", "%d", header->e_phnum);
+    print_elf_header_info("Size of program header entry", "%d (bytes)", header->e_phentsize);
 }
 
 void examine_elf_file() {
