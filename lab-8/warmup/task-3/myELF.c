@@ -494,8 +494,8 @@ void print_relocation_table(Elf32_Shdr *relocation_section_header) {
         relocation_section_header->sh_offset,
         relocations_count
     );
-    printf("Offset%*s Info%*s Type Sym-Value%*s Sym-Name%*s\n", 4, "", 6, "", 1, "", 11, "");
 
+    printf("Offset%*s Info%*s Type Sym-Value%*s Sym-Name%*s\n", 4, "", 6, "", 1, "", 11, "");
     relocation_entry = (Elf32_Rel*)(map_start + relocation_section_header->sh_offset);
     for (int i = 0; i < relocations_count; ++i, ++relocation_entry) {
         Elf32_Sym *symbol_entry = &symbol_table[ELF32_R_SYM(relocation_entry->r_info)];
