@@ -91,19 +91,25 @@ int input_filename(char *buffer, int len) {
 // ---------- Task code start ----------
 // -------------------------------------
 #define INVALID_FILE -1
+#define INVALID_LEN  -1
 bool mapped = FALSE;
 int Currentfd = INVALID_FILE;
-int map_length = INVALID_FILE;
+int map_length = INVALID_LEN;
 void *map_start = NULL;
 
-char* section_name_string_table;
-int section_name_string_table_size;
+Elf32_Ehdr *elf_header = NULL;
+char* section_name_string_table = NULL;
+int section_name_string_table_size = INVALID_LEN;
 
 void reset_map_values() {
-    map_start = NULL;
-    map_length = INVALID_FILE;
-    Currentfd = INVALID_FILE;
     mapped = FALSE;
+    map_start = NULL;
+    map_length = INVALID_LEN;
+    Currentfd = INVALID_FILE;
+
+    elf_header = NULL;
+    section_name_string_table = NULL;
+    section_name_string_table_size = INVALID_LEN;
 }
 void free_map_resources() {
     if (map_start != NULL && map_start != MAP_FAILED) {
@@ -221,8 +227,8 @@ void print_elf_file_info(Elf32_Ehdr *header) {
     byte* ident = header->e_ident;
     
     printf("\n");
-    print_elf_header_info("Magic bytes", "%s", e_ident_magic_bytes_string(ident));
-    print_elf_header_info("Data", "%.3s", e_ident_data_string(ident));
+    print_elf_header_info("Magic bytes", "%.3s", e_ident_magic_bytes_string(ident));
+    print_elf_header_info("Data", "%s", e_ident_data_string(ident));
     print_elf_header_info("Entry point", "0x%X", header->e_entry);
     print_elf_header_info("Section headers table offset", "0x%X", header->e_shoff);
     print_elf_header_info("Number of section header entries", "%d", header->e_shnum);
@@ -234,7 +240,6 @@ void print_elf_file_info(Elf32_Ehdr *header) {
 
 void examine_elf_file() {
     char filename_buffer[LINE_MAX];
-    Elf32_Ehdr *header;
     printf("Enter file name: ");
     if (!input_filename(filename_buffer, ARR_LEN(filename_buffer))) {
         return;
@@ -244,11 +249,11 @@ void examine_elf_file() {
         return;
     }
 
-    header = (Elf32_Ehdr*)map_start;
-    if (!elf_check_header(header)) {
+    elf_header = (Elf32_Ehdr*)map_start;
+    if (!elf_check_header(elf_header)) {
         return;
     }
-    print_elf_file_info(header);
+    print_elf_file_info(elf_header);
 }
 
 bool elf_section_names_string_table(Elf32_Ehdr *header) {
@@ -317,7 +322,7 @@ char* elf_section_type_string(Elf32_Word section_type) {
 }
 
 void print_section_names() {
-    Elf32_Ehdr *header = (Elf32_Ehdr*)map_start;
+    Elf32_Ehdr *header = elf_header;
     Elf32_Shdr *section_header;
     int sections_count;
     char *section_name;
