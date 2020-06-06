@@ -150,7 +150,7 @@ char* str_tab_get_name(str_tab str_tab, int index) {
 }
 
 bool map_file_to_memory_core(char *file_name, int open_flags) {
-    struct stat fd_stat; /* this is needed to  the size of the file */
+    struct stat fd_stat;
     int fd = open(file_name, open_flags);
     int err;
 
@@ -283,10 +283,10 @@ void examine_elf_file() {
     section_headers_table = (Elf32_Shdr*)offset_to_pointer(elf_header->e_shoff);
     sections_count = elf_header->e_shnum;
 
-    print_elf_file_info(elf_header);
+    print_elf_file_info();
 }
 
-bool elf_section_names_string_table() {
+bool elf_find_section_names_string_table() {
     if (section_names_string_table) {
         return TRUE;
     }
@@ -330,7 +330,7 @@ char* elf_section_type_string(Elf32_Word section_type) {
 
 void print_section_names() {
     Elf32_Shdr *section_header;
-    if (!elf_section_names_string_table()) {
+    if (!elf_find_section_names_string_table()) {
         return;
     }
 
@@ -405,7 +405,7 @@ void print_symbol_table(Elf32_Shdr *symbol_section_header) {
 
 void print_symbols() {
     Elf32_Shdr *section_header;
-    if (!elf_section_names_string_table()) {
+    if (!elf_find_section_names_string_table()) {
         return;
     }
 
@@ -432,11 +432,11 @@ void print_relocation_table(Elf32_Shdr *relocation_section_header) {
     Elf32_Sym *symbol_table;
     str_tab symbol_table_str_tab;
 
-    relocations_count = relocation_section_header->sh_size / relocation_section_header->sh_entsize;
     symbol_table_section_header = get_section_header(relocation_section_header->sh_link);
     symbol_table = (Elf32_Sym*)offset_to_pointer(symbol_table_section_header->sh_offset);
     symbol_table_str_tab = get_str_tab_of_section_index(symbol_table_section_header->sh_link);
 
+    relocations_count = relocation_section_header->sh_size / relocation_section_header->sh_entsize;
     relocation_section_name = elf_name_of_section(relocation_section_header);
     printf(
         "\nRelocation section '%s' at offset 0x%X contains %d entries:\n",
@@ -463,7 +463,7 @@ void print_relocation_table(Elf32_Shdr *relocation_section_header) {
 
 void relocation_table() {
     Elf32_Shdr *section_header;
-    if (!elf_section_names_string_table()) {
+    if (!elf_find_section_names_string_table()) {
         return;
     }
 
