@@ -47,7 +47,7 @@ bool dbg_print_error(char const *err) {
 
 int input_args(int num_args, char const *f, ...) {
     va_list args;
-    char buffer[256];
+    char buffer[LINE_MAX];
     int scan_result = 0;
     if (fgets(buffer, ARR_LEN(buffer), stdin) == NULL) {
         printf("invalid input\n");
@@ -94,12 +94,20 @@ int input_filename(char *buffer, int len) {
 // -------------------------------------
 #define INVALID_FILE -1
 #define INVALID_LEN  -1
+typedef char* str_tab;
 
 int Currentfd;
 int map_length;
 void *map_start;
 
 Elf32_Ehdr *elf_header;
+Elf32_Shdr *section_headers_table;
+int sections_count;
+str_tab section_names_string_table;
+
+bool is_mapped() {
+    return Currentfd > INVALID_FILE;
+}
 
 void reset_map_values() {
     map_start = NULL;
@@ -107,6 +115,9 @@ void reset_map_values() {
     Currentfd = INVALID_FILE;
 
     elf_header = NULL;
+    section_headers_table = NULL;
+    sections_count = INVALID_LEN;
+    section_names_string_table = NULL;
 }
 void free_map_resources() {
     if (map_start != NULL && map_start != MAP_FAILED) {
@@ -119,6 +130,31 @@ void free_map_resources() {
 void cleanup() {
     free_map_resources();
     reset_map_values();
+}
+
+void* offset_to_pointer(Elf32_Off offset) {
+    return map_start + offset;
+}
+
+Elf32_Shdr* elf_get_section_header(Elf32_Half index) {
+    return &section_headers_table[index];
+}
+
+str_tab elf_get_str_tab_from_section_index(Elf32_Half str_tab_section_index) {
+    Elf32_Shdr* section_header = elf_get_section_header(str_tab_section_index);
+    return (str_tab)offset_to_pointer(section_header->sh_offset);
+}
+
+char* str_tab_get_name(str_tab string_table, Elf32_Word index) {
+    return &string_table[index];
+}
+
+char* elf_name_of_section(Elf32_Shdr *section_header) {
+    return str_tab_get_name(section_names_string_table, section_header->sh_name);
+}
+
+int elf_get_section_entry_count(Elf32_Shdr *section_header) {
+    return section_header->sh_size / section_header->sh_entsize;
 }
 
 bool map_file_to_memory_core(char *file_name, int open_flags) {
@@ -252,12 +288,142 @@ void examine_elf_file() {
     if (!elf_check_header()) {
         return;
     }
+    section_headers_table = (Elf32_Shdr*)offset_to_pointer(elf_header->e_shoff);
+    sections_count = elf_header->e_shnum;
 
     print_elf_file_info();
 }
 
+bool elf_find_section_names_string_table() {
+    if (section_names_string_table) {
+        return TRUE;
+    }
+
+    if (elf_header->e_shstrndx == SHN_UNDEF) {
+        printf("The ELF file does not have a section names string table\n");
+        return FALSE;
+    }
+
+    section_names_string_table = elf_get_str_tab_from_section_index(elf_header->e_shstrndx);
+    return TRUE;
+}
+
+void print_section_names() {
+    Elf32_Shdr *section_header;
+    if (!elf_find_section_names_string_table()) {
+        return;
+    }
+
+    print_line();
+    dbg_printf("Section names string table header index %d\n", elf_header->e_shstrndx);
+
+    printf("[Nr] %-20s %-10s %-10s %-10s %-10s", "Name", "Address", "Offset", "Size", "Type");
+    if (DebugMode) {
+        printf(" %-10s", "Name-Index");
+    }
+    print_line();
+
+    section_header = section_headers_table;
+    for (int i = 0; i < sections_count; ++i, ++section_header) {
+        printf(
+            "[%-2d] %-20s 0x%08X 0x%08X %-10d %-10d",
+            i,
+            elf_name_of_section(section_header),
+            section_header->sh_addr,
+            section_header->sh_offset,
+            section_header->sh_size,
+            section_header->sh_type
+        );
+        if (DebugMode) {
+            printf(" %-10d", section_header->sh_name);
+        }
+
+        print_line();
+    }
+}
+
+void print_symbol_table(Elf32_Shdr *section_header, int section_index) {
+    Elf32_Sym *symbol_entry;
+    str_tab symbols_string_table;
+    int symbols_count;
+
+    symbols_count = elf_get_section_entry_count(section_header);
+    symbols_string_table = elf_get_str_tab_from_section_index(section_header->sh_link);
+
+    print_line();
+    dbg_printf("Symbol table (%d)\n", section_index);
+    dbg_printf("Symbol table size: %d (bytes)\n", section_header->sh_size);
+    dbg_printf("Symbols count: %d\n", symbols_count);
+
+    printf("%s %-10s %s %-20s %-30s", "Num", "Value", "Sh-Ndx", "Sh-Name", "Sym-Name");
+    print_line();
+
+    symbol_entry = (Elf32_Sym*)offset_to_pointer(section_header->sh_offset);
+    for (int i = 0; i < symbols_count; ++i, ++symbol_entry) {
+        char *symbol_name;
+        Elf32_Shdr *symbol_section_header;
+        char *symbol_section_name;
+
+        printf("%-3d 0x%08X ", i, symbol_entry->st_value);
+        switch (symbol_entry->st_shndx) {
+            case SHN_ABS:
+                printf("%-6s %-20s", "ABS", "");
+                break;
+            case SHN_UNDEF:
+                printf("%-6s %-20s", "UNDEF", "");
+                break;
+            default:
+                symbol_section_header = elf_get_section_header(symbol_entry->st_shndx);
+                symbol_section_name = elf_name_of_section(symbol_section_header);
+                printf("%-6d %-20s", symbol_entry->st_shndx, symbol_section_name); 
+                break;
+        }
+
+        symbol_name = str_tab_get_name(symbols_string_table, symbol_entry->st_name);
+        printf(" %-30s", symbol_name);
+
+        print_line();
+    }
+}
+
+void print_symbols() {
+    Elf32_Shdr *section_header;
+    if (!elf_find_section_names_string_table()) {
+        return;
+    }
+
+    section_header = section_headers_table;
+    for (int i = 0; i < sections_count; ++i, ++section_header) {
+        if (section_header->sh_type != SHT_SYMTAB) {
+            continue;
+        }
+        if (section_header->sh_link == SHN_UNDEF) {
+            dbg_printf("WARN: symbol table (%d) without a string table\n", i);
+            continue;
+        }
+
+        print_symbol_table(section_header, i);
+    }
+}
+
 void toggle_debug_mode_action() {
     DebugMode = 1 - DebugMode;
+}
+void print_section_names_action() {
+    if (is_mapped()) {
+        print_section_names();
+    }
+    else {
+        printf("ELF file was not loaded\n");
+    }
+}
+void print_symbols_action() {
+    if (is_mapped()) {
+        print_symbols();
+    }
+    else {
+        printf("ELF file was not loaded\n");
+    }
 }
 void quit_action() {
     cleanup();
@@ -291,6 +457,8 @@ menu_func get_menu_func(menu_item const menu[], int option, int len) {
 menu_item const menu[] = {
     { "Toggle Debug Mode", toggle_debug_mode_action },
     { "Examine ELF File", examine_elf_file },
+    { "Print Section Names", print_section_names_action },
+    { "Print Symbols", print_symbols_action },
     { "Quit", quit_action },
     { NULL, NULL }
 };
