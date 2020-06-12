@@ -10,11 +10,11 @@ OBJ_DIR     := .
 LIST_DIR    := .
 BIN_DIR     := .
 
-PRG_NAME    := elf-ph
-OBJECTS     := $(OBJ_DIR)/elf-ph.o
+PRG_NAME    := virus
+OBJECTS     := $(OBJ_DIR)/virus.o
 
 $(PRG_NAME): $(OBJECTS)
-	$(CC) $(CC_FLAGS) -o $(BIN_DIR)/$(PRG_NAME) $(OBJECTS)
+	$(LINK) $(LINK_FLAGS) -o $(BIN_DIR)/$(PRG_NAME) $(OBJECTS)
 
 # .c/.s compile rulesint
 $(OBJ_DIR)/%.o: $(SRC_DIR)/%.c
