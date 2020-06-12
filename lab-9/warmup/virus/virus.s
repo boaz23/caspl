@@ -53,6 +53,11 @@
     lseek %1, 0, SEEK_END
 %endmacro
 
+%macro lea_stack_var 2-3 eax
+    lea %3, %2
+    mov %1, %3
+%endmacro
+
 %define STK_RES 200
 %define RDWR    2
 %define SEEK_END 2
@@ -87,20 +92,26 @@ _start:
 
 
 ; You code for this lab goes here
-    %define %$loc ebp-4
-    %define %$fd ebp-8
-    %define %$fsz ebp-12
+    %xdefine %$base 0
+    %xdefine %$loc ebp-4
+    %xdefine %$p_stack_var ebp-8
+    %xdefine %$fd ebp-12
+    %xdefine %$fsz ebp-16
 
     ; task 0b
-    %define %$mag ebp-16
-    %define %$p_mag ebp-20
+    %xdefine %$base 20
+    %xdefine %$mag ebp-%$base
 
-    ; task 1 and forward - NOTE: this overwrites task 0b variables
-    %define %$exe_code_start_vaddr ebp-16
-    %define %$exe_entry_point ebp-20
-    %define %$p_exe_entry_point ebp-24
-    %define %$elf_header ebp-(24+ELF_HEADER_SIZE)
-    %define %$p_elf_header ebp-(28+ELF_HEADER_SIZE)
+    ; task 1 - NOTE: this overwrites task 0b variables
+    %xdefine %$base 20
+    %xdefine %$exe_code_start_vaddr ebp-%$base
+
+    ; task 2
+    %xdefine %$base 24
+    %xdefine %$exe_entry_point ebp-%$base
+    
+    %xdefine %$base (24+ELF_HEADER_SIZE)
+    %xdefine %$elf_header ebp-%$base
 
     .print_msg:
     get_lbl_loc [%$loc], OutStr
@@ -124,9 +135,8 @@ _start:
     mov dword [%$fd], eax
 
     .read_elf_magic_number:
-    lea eax, [%$mag]
-    mov dword [%$p_mag], eax
-    read [%$fd], [%$p_mag], 4
+    lea_stack_var [%$p_stack_var], [%$mag]
+    read [%$fd], [%$p_stack_var], 4
 
     .check_elf_magic_number:
     cmp byte [%$mag], 0x7f
@@ -153,15 +163,12 @@ _start:
 
     .copy_elf_header:
     seek_to_start [%$fd]
-    lea eax, [%$elf_header]
-    mov dword [%$p_elf_header], eax
-    read [%$fd], [%$p_elf_header], ELF_HEADER_SIZE
+    lea_stack_var [%$p_stack_var], [%$elf_header]
+    read [%$fd], [%$p_stack_var], ELF_HEADER_SIZE
 
     .save_original_entry_point:
         mov eax, dword [%$elf_header+ENTRY]
         mov dword [%$exe_entry_point], eax
-        lea eax, [%$exe_entry_point]
-        mov dword [%$p_exe_entry_point], eax
 
     .change_entry_point:
     mov dword [%$exe_code_start_vaddr], 008048000h
@@ -174,11 +181,13 @@ _start:
     mov dword [%$elf_header+ENTRY], eax
 
     .write_elf_header_back_to_file:
-    write [%$fd], [%$p_elf_header], ELF_HEADER_SIZE
+    lea_stack_var [%$p_stack_var], [%$elf_header]
+    write [%$fd], [%$p_stack_var], ELF_HEADER_SIZE
 
     .write_previous_entry_point:
     lseek [%$fd], -4, SEEK_END
-    write [%$fd], [%$p_exe_entry_point], 4
+    lea_stack_var [%$p_stack_var], [%$exe_entry_point]
+    write [%$fd], [%$p_stack_var], 4
 
     .close_file:
     close [%$fd]
