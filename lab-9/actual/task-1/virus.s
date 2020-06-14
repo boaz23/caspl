@@ -171,4 +171,3 @@ PreviousEntryPoint: dd VirusExit
 virus_end:
 
 %pop
-
