@@ -1,7 +1,7 @@
 ## General
-This is my code for the labs in the CASPL course.
-For the labs, we wrote several programs using mainly _C_, but also x86 assembly towards the end.
+This is my code for the labs in the CASPL course. This repository is seperate from the course assignments repositories.
 
+For the labs, we wrote several programs using mainly _C_, but also x86 assembly towards the end.
 Each lab code contains code done before the lab as preparation and during the lab time itself, implementing the tasks specified in the lab's assignment description.
 The preparation code is under the `warmp` directory and lab time code is under the `actual` directory.
 
