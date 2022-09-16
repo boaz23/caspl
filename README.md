@@ -8,3 +8,7 @@ The preparation code is under the `warmp` directory and lab time code is under t
 ## Labs assignments
 All the labs assignments, along with a short summary for them, can be found [here](https://www.cs.bgu.ac.il/~caspl202/Lab_Sessions).  
 For lab 9, pick `9 (ASM)` over `9 (C)`.
+
+## Assignment repositories
+[Assignment 2](https://github.com/boaz23/caspl-ass2)
+[Assignment 3](https://github.com/boaz23/caspl-ass-3)
